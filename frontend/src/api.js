@@ -1,4 +1,7 @@
-export const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
+export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000').replace(/\/+$/, '')
+const BACKEND_HEALTH_TIMEOUT_MS = 30000
+const BACKEND_WAITING_NOTICE_MS = 1000
+const BACKEND_RETRY_DELAY_MS = 3000
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -53,7 +56,8 @@ export const api = {
 export async function waitForBackend(onWaiting) {
   while (true) {
     const controller = new AbortController()
-    const timeout = window.setTimeout(() => controller.abort(), 3000)
+    const timeout = window.setTimeout(() => controller.abort(), BACKEND_HEALTH_TIMEOUT_MS)
+    const waitingNotice = window.setTimeout(() => onWaiting(true), BACKEND_WAITING_NOTICE_MS)
     try {
       const response = await fetch(`${API_URL}/health`, { signal: controller.signal })
       if (response.ok) {
@@ -64,8 +68,9 @@ export async function waitForBackend(onWaiting) {
       onWaiting(true)
     } finally {
       window.clearTimeout(timeout)
+      window.clearTimeout(waitingNotice)
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 3000))
+    await new Promise((resolve) => window.setTimeout(resolve, BACKEND_RETRY_DELAY_MS))
   }
 }
 

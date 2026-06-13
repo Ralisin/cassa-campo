@@ -61,7 +61,7 @@ watch(
 )
 
 onMounted(async () => {
-  waitForBackend((value) => (waiting.value = value))
+  await waitForBackend((value) => (waiting.value = value))
   if (session.authenticated && !session.user) {
     await session.loadUser().catch(() => {
       session.logout()

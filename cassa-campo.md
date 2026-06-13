@@ -23,10 +23,11 @@ L'applicazione deve essere:
 Tecnologie:
 
 * Vue 3
-* TypeScript
+* JavaScript
 * Vite
 * Pinia
 * Vue Router
+* PrimeVue
 * TailwindCSS
 * PWA
 
@@ -151,7 +152,10 @@ Restituisce:
 * id utente
 * nome
 * ruolo
-* unità di appartenenza
+* branca di appartenenza
+
+Ogni profilo deve essere associato obbligatoriamente a una branca.
+I profili preesistenti senza branca vengono migrati sulla branca `E/G`.
 
 ---
 
@@ -161,12 +165,21 @@ Restituisce:
 
 Permessi:
 
-* visualizzare tutto
-* modificare tutto
+* visualizzare lo stato della cassa
+* visualizzare la lista globale dei movimenti e il dettaglio di ogni movimento
+* visualizzare il riepilogo completo
+* creare movimenti
+* modificare i propri movimenti
+* modificare i movimenti inseriti da altri utenti
 * eliminare movimenti
 * esportare Excel
-* gestire utenti
-* modificare impostazioni campo
+* impostare il saldo iniziale dei contanti e della carta
+* gestire gli utenti: registrarli, modificarne nome, email, ruolo, branca e password
+* visualizzare e filtrare tutti i rimborsi
+* segnare un rimborso come completato o riportarlo allo stato da rimborsare
+
+La gestione utenti è disponibile esclusivamente agli admin. Il sistema non
+permette di rimuovere il ruolo all'ultimo admin rimasto.
 
 ---
 
@@ -174,10 +187,20 @@ Permessi:
 
 Permessi:
 
+* visualizzare lo stato della cassa
+* visualizzare la lista globale dei movimenti e il dettaglio di ogni movimento
+* visualizzare il riepilogo completo
 * creare movimenti
-* modificare propri movimenti
-* visualizzare movimenti
-* visualizzare dashboard
+* modificare esclusivamente i propri movimenti
+* inserire movimenti esclusivamente per la branca associata al proprio profilo
+* visualizzare e filtrare i propri rimborsi e il totale ancora dovuto
+
+Non può:
+
+* modificare movimenti inseriti da altri utenti
+* eliminare movimenti
+* esportare Excel
+* modificare i saldi iniziali
 
 ---
 
@@ -198,11 +221,18 @@ Permessi:
 
 ### Attività recente
 
-* ultimi movimenti inseriti
+* movimenti con data operazione uguale al giorno corrente
+* autore che ha inserito ciascun movimento
+* collegamento alla lista completa quando non sono presenti movimenti nel giorno corrente
 
 ---
 
 # Movimenti
+
+La lista globale può essere filtrata per tipo, metodo di pagamento e autore
+del movimento. Il pannello filtri è collassabile. I movimenti sono raggruppati
+per data e ogni gruppo può essere espanso o collassato cliccando sulla relativa
+data.
 
 ## Campi
 
@@ -233,8 +263,12 @@ Vincoli:
 * il backend valida sempre che un movimento con rimborso necessario sia
   un'uscita in contanti, anche se la richiesta non proviene dal frontend
 
-Nella V1 la relazione segnala esclusivamente che il rimborso è necessario. Non
-viene tracciato lo stato di avvenuto rimborso.
+La relazione traccia anche se il rimborso è stato completato, quando è stato
+completato e quale admin lo ha segnato.
+
+Gli utenti possono consultare esclusivamente i propri rimborsi e il totale
+ancora dovuto. Gli admin possono consultare tutti i rimborsi, filtrarli per
+persona e stato, segnarli come rimborsati o annullare la segnatura.
 
 ### Data registrazione
 
@@ -262,11 +296,18 @@ Valori:
 * CoCa
 * Gruppo
 
+Il valore viene preselezionato dalla branca associata al profilo. Per gli
+utenti con ruolo `user` non è modificabile; gli admin possono selezionare una
+branca diversa. Il backend forza sempre la branca del profilo per gli utenti
+non admin.
+
 ### Importo
 
 Valore monetario.
 
 ### Note
+
+Campo obbligatorio. Deve descrivere brevemente il motivo del movimento.
 
 Testo libero.
 
@@ -326,6 +367,35 @@ Genera e restituisce il file Excel.
 
 ---
 
+## Utenti
+
+Endpoint riservati agli admin:
+
+GET /users
+
+POST /users
+
+PUT /users/{id}
+
+La password è obbligatoria durante la registrazione e facoltativa durante la
+modifica. Se omessa durante la modifica, quella esistente viene mantenuta.
+
+---
+
+## Rimborsi
+
+GET /reimbursements
+
+Restituisce riepilogo e movimenti da rimborsare. Per gli utenti normali include
+esclusivamente i propri movimenti; per gli admin include tutti i movimenti.
+
+PUT /reimbursements/{movement_id}
+
+Endpoint riservato agli admin per segnare un rimborso come completato oppure
+riportarlo allo stato da rimborsare.
+
+---
+
 # Gestione Cold Start
 
 Render Free può mettere in pausa il backend.
@@ -366,7 +436,7 @@ name text
 
 role text
 
-default_unit text
+branch text not null
 
 created_at timestamptz
 ```
@@ -433,6 +503,10 @@ id uuid primary key
 movement_id uuid unique not null references movements(id) on delete cascade
 
 created_at timestamptz
+
+reimbursed_at timestamptz nullable
+
+reimbursed_by uuid nullable references users(id)
 ```
 
 Il vincolo `unique` su `movement_id` garantisce che ogni movimento possa avere

@@ -1,0 +1,150 @@
+import uuid
+from datetime import date, datetime
+from decimal import Decimal
+
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+
+from app.models import BalanceType, Branch, MovementType, PaymentMethod, TransferType, UserRole
+
+
+class ApiModel(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UserRead(ApiModel):
+    id: uuid.UUID
+    email: EmailStr
+    name: str
+    role: UserRole
+    branch: Branch
+    created_at: datetime
+
+
+class UserCreate(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=255)
+    role: UserRole = UserRole.USER
+    branch: Branch
+    password: str = Field(min_length=8, max_length=72)
+
+
+class UserUpdate(BaseModel):
+    email: EmailStr
+    name: str = Field(min_length=1, max_length=255)
+    role: UserRole
+    branch: Branch
+    password: str | None = Field(default=None, min_length=8, max_length=72)
+
+
+class MovementInput(BaseModel):
+    operation_date: date
+    type: MovementType
+    payment_method: PaymentMethod
+    supplier: str = Field(min_length=1, max_length=255)
+    unit: Branch
+    balance_type: BalanceType = BalanceType.CAMP
+    amount: Decimal = Field(gt=0, decimal_places=2)
+    notes: str = Field(min_length=1)
+    needs_reimbursement: bool = False
+
+    @model_validator(mode="after")
+    def validate_reimbursement(self) -> "MovementInput":
+        if self.needs_reimbursement and (
+            self.type != MovementType.EXPENSE or self.payment_method != PaymentMethod.CASH
+        ):
+            raise ValueError("A reimbursement requires a cash expense")
+        return self
+
+
+class MovementRead(ApiModel):
+    id: uuid.UUID
+    created_at: datetime
+    operation_date: date
+    type: MovementType
+    payment_method: PaymentMethod
+    supplier: str
+    unit: str
+    balance_type: BalanceType
+    amount: Decimal
+    notes: str | None
+    created_by: uuid.UUID
+    creator_name: str
+    creator_email: EmailStr
+    needs_reimbursement: bool
+    reimbursement_status: str | None
+    reimbursed_at: datetime | None
+    reimbursed_by_name: str | None
+
+
+class ReimbursementUpdate(BaseModel):
+    reimbursed: bool
+
+
+class ReimbursementSummary(BaseModel):
+    pending_amount: Decimal
+    reimbursed_amount: Decimal
+    pending_count: int
+    reimbursed_count: int
+    movements: list[MovementRead]
+
+
+class TransferInput(BaseModel):
+    operation_date: date
+    type: TransferType
+    amount: Decimal = Field(gt=0, decimal_places=2)
+    notes: str = Field(min_length=1)
+
+
+class TransferRead(ApiModel):
+    id: uuid.UUID
+    created_at: datetime
+    operation_date: date
+    type: TransferType
+    amount: Decimal
+    notes: str
+    created_by: uuid.UUID
+    creator_name: str
+
+
+class SettingsInput(BaseModel):
+    camp_year: int
+    camp_name: str = Field(min_length=1, max_length=255)
+    participants: int = Field(ge=0)
+    quota_per_person: Decimal = Field(ge=0)
+    cash_initial: Decimal = Field(ge=0)
+
+    @model_validator(mode="after")
+    def validate_cash_initial(self) -> "SettingsInput":
+        if self.cash_initial > self.participants * self.quota_per_person:
+            raise ValueError("Initial cash cannot exceed the camp budget")
+        return self
+
+
+class SettingsRead(ApiModel):
+    id: uuid.UUID
+    camp_year: int
+    camp_name: str
+    participants: int
+    quota_per_person: Decimal
+    max_budget: Decimal
+    cash_initial: Decimal
+    bank_initial: Decimal
+
+
+class DashboardRead(BaseModel):
+    max_budget: Decimal
+    spent: Decimal
+    remaining_budget: Decimal
+    cash_balance: Decimal
+    bank_balance: Decimal
+    today_movements: list[MovementRead]

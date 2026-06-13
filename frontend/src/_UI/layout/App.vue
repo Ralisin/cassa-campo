@@ -2,13 +2,11 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { waitForBackend } from '@/api'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
 const route = useRoute()
 const router = useRouter()
-const waiting = ref(false)
 const userMenu = ref()
 const userMenuItems = computed(() => [
   { separator: true },
@@ -61,7 +59,6 @@ watch(
 )
 
 onMounted(async () => {
-  await waitForBackend((value) => (waiting.value = value))
   if (session.authenticated && !session.user) {
     await session.loadUser().catch(() => {
       session.logout()
@@ -72,10 +69,6 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div v-if="waiting" class="fixed inset-x-0 top-0 z-50 bg-amber px-4 py-3 text-center text-sm font-bold text-forest">
-    Server in avvio. Attendi qualche secondo.
-  </div>
-
   <div v-if="route.path !== '/login'" class="mx-auto min-h-screen max-w-3xl bg-[#f6f8f5] pb-24">
     <PToolbar class="sticky top-0 z-30 !rounded-none !border-x-0 !border-t-0 !bg-white/95 !px-4 backdrop-blur">
       <template #start>

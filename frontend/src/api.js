@@ -2,6 +2,7 @@ export const API_URL = (import.meta.env.VITE_API_URL ?? 'http://localhost:8000')
 const BACKEND_HEALTH_TIMEOUT_MS = 30000
 const BACKEND_WAITING_NOTICE_MS = 1000
 const BACKEND_RETRY_DELAY_MS = 3000
+const BACKEND_HEALTH_MAX_ATTEMPTS = 2
 
 export class ApiError extends Error {
   constructor(message, status) {
@@ -54,7 +55,7 @@ export const api = {
 }
 
 export async function waitForBackend(onWaiting) {
-  while (true) {
+  for (let attempt = 0; attempt < BACKEND_HEALTH_MAX_ATTEMPTS; attempt += 1) {
     const controller = new AbortController()
     const timeout = window.setTimeout(() => controller.abort(), BACKEND_HEALTH_TIMEOUT_MS)
     const waitingNotice = window.setTimeout(() => onWaiting(true), BACKEND_WAITING_NOTICE_MS)
@@ -72,6 +73,7 @@ export async function waitForBackend(onWaiting) {
     }
     await new Promise((resolve) => window.setTimeout(resolve, BACKEND_RETRY_DELAY_MS))
   }
+  onWaiting(false)
 }
 
 export async function downloadExcel() {

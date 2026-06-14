@@ -56,9 +56,9 @@ const cashDetails = computed(() => {
   const current = Number(dashboard.value?.cash_balance ?? 0)
   const pending = Number(dashboard.value?.pending_reimbursements ?? 0)
   return [
-    { label: 'Attuali', value: current },
+    { label: 'Attuali', value: current + pending },
     { label: 'Da rimborsare', value: pending },
-    { label: 'Netti', value: current - pending },
+    { label: 'Netti', value: current },
   ]
 })
 const visibleTransfers = computed(() => (

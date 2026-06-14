@@ -7,6 +7,7 @@ export const useSessionStore = defineStore('session', () => {
   const token = ref(localStorage.getItem('access_token'))
   const authenticated = computed(() => Boolean(token.value))
   const isAdmin = computed(() => user.value?.role === 'admin')
+  const isOperator = computed(() => ['admin', 'cashier'].includes(user.value?.role))
 
   async function login(email, password) {
     const result = await api.post('/auth/login', { email, password })
@@ -26,5 +27,5 @@ export const useSessionStore = defineStore('session', () => {
     localStorage.removeItem('access_token')
   }
 
-  return { user, authenticated, isAdmin, login, loadUser, logout }
+  return { user, authenticated, isAdmin, isOperator, login, loadUser, logout }
 })

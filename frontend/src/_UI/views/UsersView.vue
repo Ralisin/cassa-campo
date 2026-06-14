@@ -16,6 +16,7 @@ const editingId = ref(null)
 const branches = ['L/C', 'E/G', 'R/S', 'CoCa', 'Gruppo']
 const roles = [
   { label: 'Utente', value: 'user' },
+  { label: 'Cassiere', value: 'cashier' },
   { label: 'Admin', value: 'admin' },
 ]
 const form = reactive({

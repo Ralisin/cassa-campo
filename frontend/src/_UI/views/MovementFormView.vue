@@ -9,7 +9,7 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const editing = computed(() => typeof route.params.id === 'string')
-const unitReadOnly = computed(() => !session.isAdmin)
+const unitReadOnly = computed(() => !session.isOperator)
 const saving = ref(false)
 const error = ref('')
 const submitted = ref(false)
@@ -94,7 +94,7 @@ onMounted(async () => {
     return
   }
   const movement = await api.get(`/movements/${route.params.id}`)
-  if (!session.isAdmin && movement.created_by !== session.user?.id) {
+  if (!session.isOperator && movement.created_by !== session.user?.id) {
     router.replace(`/movimenti/${route.params.id}`)
     return
   }

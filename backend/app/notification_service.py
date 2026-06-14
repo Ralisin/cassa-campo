@@ -17,9 +17,19 @@ def notify_admins_of_movement(
     *,
     reimbursement_requested: bool,
 ) -> None:
-    admins = db.scalars(
-        select(User).where(User.role == UserRole.ADMIN, User.id != creator.id)
-    ).all()
+    recipients = list(
+        db.scalars(select(User).where(User.role == UserRole.ADMIN, User.id != creator.id)).all()
+    )
+    if reimbursement_requested:
+        recipients.extend(
+            db.scalars(
+                select(User).where(
+                    User.role == UserRole.CASHIER,
+                    User.branch == movement.unit,
+                    User.id != creator.id,
+                )
+            ).all()
+        )
     kind = "reimbursement_requested" if reimbursement_requested else "movement_created"
     title = "Nuovo rimborso da effettuare" if reimbursement_requested else "Nuovo movimento"
     message = (
@@ -37,7 +47,7 @@ def notify_admins_of_movement(
                 title=title,
                 message=message,
             )
-            for admin in admins
+            for admin in recipients
         ]
     )
 

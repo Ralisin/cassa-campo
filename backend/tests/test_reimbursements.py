@@ -31,7 +31,7 @@ def make_user(email: str, role: UserRole) -> User:
     )
 
 
-def test_users_see_only_their_reimbursements_and_admin_can_complete_them() -> None:
+def test_users_see_only_their_reimbursements_and_operators_can_complete_them() -> None:
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
@@ -41,9 +41,10 @@ def test_users_see_only_their_reimbursements_and_admin_can_complete_them() -> No
 
     with Session(engine) as db:
         admin = make_user("admin@example.it", UserRole.ADMIN)
+        cashier = make_user("cashier@example.it", UserRole.CASHIER)
         first_user = make_user("first@example.it", UserRole.USER)
         second_user = make_user("second@example.it", UserRole.USER)
-        db.add_all([admin, first_user, second_user])
+        db.add_all([admin, cashier, first_user, second_user])
         db.flush()
         first_movement = Movement(
             operation_date=date.today(),
@@ -72,6 +73,7 @@ def test_users_see_only_their_reimbursements_and_admin_can_complete_them() -> No
 
         user_summary = list_reimbursements(db, first_user)
         admin_summary = list_reimbursements(db, admin)
+        cashier_summary = list_reimbursements(db, cashier)
         completed = update_reimbursement(
             first_movement.id,
             ReimbursementUpdate(reimbursed=True),
@@ -82,5 +84,6 @@ def test_users_see_only_their_reimbursements_and_admin_can_complete_them() -> No
     assert user_summary.pending_amount == Decimal("12.50")
     assert [movement.creator_email for movement in user_summary.movements] == ["first@example.it"]
     assert admin_summary.pending_amount == Decimal("20.50")
+    assert cashier_summary.pending_amount == Decimal("20.50")
     assert completed.pending_amount == Decimal("8.00")
     assert completed.reimbursed_amount == Decimal("12.50")

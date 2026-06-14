@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
-from app.dependencies import AdminUser, CurrentUser, DbSession
+from app.dependencies import CurrentUser, DbSession, OperatorUser
 from app.models import TransferType, TreasuryTransfer
 from app.schemas import TransferInput, TransferRead
 from app.services import get_dashboard
@@ -34,7 +34,7 @@ def list_transfers(db: DbSession, _: CurrentUser) -> list[TransferRead]:
 
 
 @router.post("", response_model=TransferRead, status_code=status.HTTP_201_CREATED)
-def create_transfer(data: TransferInput, db: DbSession, admin: AdminUser) -> TransferRead:
+def create_transfer(data: TransferInput, db: DbSession, operator: OperatorUser) -> TransferRead:
     dashboard = get_dashboard(db)
     available = (
         dashboard.bank_balance if data.type == TransferType.WITHDRAWAL else dashboard.cash_balance
@@ -50,7 +50,7 @@ def create_transfer(data: TransferInput, db: DbSession, admin: AdminUser) -> Tra
         type=data.type,
         amount=data.amount,
         notes=data.notes.strip(),
-        created_by=admin.id,
+        created_by=operator.id,
     )
     db.add(transfer)
     db.commit()

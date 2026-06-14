@@ -37,5 +37,17 @@ def require_admin(user: CurrentUser) -> User:
 AdminUser = Annotated[User, Depends(require_admin)]
 
 
+def require_operator(user: CurrentUser) -> User:
+    if user.role not in (UserRole.ADMIN, UserRole.CASHIER):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin or cashier role required",
+        )
+    return user
+
+
+OperatorUser = Annotated[User, Depends(require_operator)]
+
+
 def can_edit_movement(user: User, movement_created_by: uuid.UUID) -> bool:
-    return user.role == UserRole.ADMIN or movement_created_by == user.id
+    return user.role in (UserRole.ADMIN, UserRole.CASHIER) or movement_created_by == user.id

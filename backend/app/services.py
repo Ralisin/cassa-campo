@@ -67,7 +67,7 @@ def apply_movement_input(movement: Movement, data: MovementInput) -> None:
 
 
 def enforce_user_branch(data: MovementInput, user: User) -> None:
-    if user.role != UserRole.ADMIN:
+    if user.role not in (UserRole.ADMIN, UserRole.CASHIER):
         data.unit = user.branch
 
 

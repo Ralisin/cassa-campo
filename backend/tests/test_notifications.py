@@ -18,14 +18,18 @@ from app.routers.reimbursements import update_reimbursement
 from app.schemas import MovementInput, ReimbursementUpdate
 
 
-def make_user(email: str, role: UserRole) -> User:
+def make_user(
+    email: str,
+    role: UserRole,
+    branch: Branch = Branch.ESPLORATORI_GUIDE,
+) -> User:
     return User(
         id=uuid.uuid4(),
         email=email,
         name=email.split("@")[0],
         password_hash="unused",
         role=role,
-        branch=Branch.ESPLORATORI_GUIDE.value,
+        branch=branch.value,
     )
 
 
@@ -39,8 +43,14 @@ def test_reimbursement_notifications_reach_admin_and_requesting_user() -> None:
 
     with Session(engine) as db:
         admin = make_user("admin@example.it", UserRole.ADMIN)
+        cashier = make_user("cashier@example.it", UserRole.CASHIER)
+        other_cashier = make_user(
+            "other-cashier@example.it",
+            UserRole.CASHIER,
+            Branch.ROVER_SCOLTE,
+        )
         user = make_user("user@example.it", UserRole.USER)
-        db.add_all([admin, user])
+        db.add_all([admin, cashier, other_cashier, user])
         db.commit()
 
         movement = create_movement(
@@ -61,6 +71,8 @@ def test_reimbursement_notifications_reach_admin_and_requesting_user() -> None:
         admin_notifications = list_notifications(db, admin)
         assert admin_notifications.unread_count == 1
         assert admin_notifications.items[0].kind == "reimbursement_requested"
+        assert list_notifications(db, cashier).unread_count == 1
+        assert list_notifications(db, other_cashier).unread_count == 0
 
         mark_notification_read(admin_notifications.items[0].id, db, admin)
         assert list_notifications(db, admin).unread_count == 0
@@ -82,6 +94,7 @@ def test_reimbursement_notifications_reach_admin_and_requesting_user() -> None:
         assert admin_notifications.unread_count == 1
         unread_notification = next(item for item in admin_notifications.items if item.read_at is None)
         assert unread_notification.kind == "movement_created"
+        assert list_notifications(db, cashier).unread_count == 1
         mark_all_notifications_read(db, admin)
 
         update_reimbursement(

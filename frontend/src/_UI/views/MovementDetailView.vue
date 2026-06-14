@@ -9,7 +9,7 @@ const router = useRouter()
 const session = useSessionStore()
 const movement = ref(null)
 const canEdit = computed(
-  () => session.isAdmin || movement.value?.created_by === session.user?.id,
+  () => session.isOperator || movement.value?.created_by === session.user?.id,
 )
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const rows = [
@@ -45,7 +45,7 @@ async function toggleReimbursed() {
           <PTag v-if="movement.reimbursement_status === 'da_rimborsare'" value="Da rimborsare" severity="warn" class="mt-2" />
           <PTag v-else-if="movement.reimbursement_status === 'rimborsato'" value="Rimborsato" severity="success" class="mt-2" />
         </section>
-        <section v-if="session.isAdmin && movement.needs_reimbursement" class="movement-detail-reimbursement border-t border-slate-200 pt-4">
+        <section v-if="session.isOperator && movement.needs_reimbursement" class="movement-detail-reimbursement border-t border-slate-200 pt-4">
           <PButton
             :label="movement.reimbursement_status === 'rimborsato' ? 'Segna da rimborsare' : 'Segna come rimborsato'"
             :icon="movement.reimbursement_status === 'rimborsato' ? 'pi pi-undo' : 'pi pi-check-circle'"

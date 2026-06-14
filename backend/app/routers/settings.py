@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.dependencies import AdminUser, CurrentUser, DbSession
+from app.dependencies import CurrentUser, DbSession, OperatorUser
 from app.models import CampSettings
 from app.schemas import SettingsInput, SettingsRead
 
@@ -21,7 +21,7 @@ def get_settings(db: DbSession, _: CurrentUser) -> CampSettings:
 
 
 @router.put("", response_model=SettingsRead)
-def update_settings(data: SettingsInput, db: DbSession, _: AdminUser) -> CampSettings:
+def update_settings(data: SettingsInput, db: DbSession, _: OperatorUser) -> CampSettings:
     settings = latest_settings(db) or CampSettings()
     for field, value in data.model_dump().items():
         setattr(settings, field, value)

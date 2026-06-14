@@ -161,7 +161,7 @@ usePolling(loadSummary)
     <section class="summary-section">
       <div class="summary-section-header summary-section-header--split">
         <h2 class="section-title">Per metodo</h2>
-        <div v-if="session.isAdmin" class="summary-actions">
+        <div v-if="session.isOperator" class="summary-actions">
           <PButton label="Giroconto" icon="pi pi-arrow-right-arrow-left" size="small" text class="summary-action" @click="openTransfer" />
           <PButton label="Dati campo e saldi" icon="pi pi-pencil" size="small" text class="summary-action" @click="openSettings" />
         </div>
@@ -217,7 +217,7 @@ usePolling(loadSummary)
       </PCard>
     </section>
 
-    <section v-if="session.isAdmin" class="summary-section">
+    <section v-if="session.isOperator" class="summary-section">
       <div class="summary-section-header">
         <h2 class="section-title">Esportazione</h2>
       </div>

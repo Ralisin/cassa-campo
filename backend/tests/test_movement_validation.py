@@ -62,3 +62,18 @@ def test_admin_can_choose_movement_branch() -> None:
     enforce_user_branch(data, admin)
 
     assert data.unit == Branch.GRUPPO
+
+
+def test_cashier_can_choose_movement_branch() -> None:
+    data = movement_input()
+    cashier = User(
+        email="cassiere@example.it",
+        name="Cassiere",
+        password_hash="unused",
+        role=UserRole.CASHIER,
+        branch=Branch.ESPLORATORI_GUIDE.value,
+    )
+
+    enforce_user_branch(data, cashier)
+
+    assert data.unit == Branch.GRUPPO

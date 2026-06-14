@@ -65,7 +65,7 @@ usePolling(load)
       <PCard class="reimbursement-summary-card reimbursement-summary-card--pending">
         <template #content>
           <PAvatar icon="pi pi-clock" shape="circle" class="!bg-amber-100 !text-amber-700" />
-          <p class="mt-3 text-[11px] font-black uppercase tracking-wider text-slate-500">{{ session.isAdmin ? 'Da restituire' : 'Ti devono restituire' }}</p>
+          <p class="mt-3 text-[11px] font-black uppercase tracking-wider text-slate-500">{{ session.isOperator ? 'Da restituire' : 'Ti devono restituire' }}</p>
           <p class="mt-1 text-xl font-black text-amber-700">{{ euro.format(Number(summary.pending_amount)) }}</p>
           <p class="mt-1 text-xs text-slate-500">{{ summary.pending_count }} movimenti</p>
         </template>
@@ -85,7 +85,7 @@ usePolling(load)
         <div class="movement-filter-segments reimbursement-filter-segments">
           <PButton v-for="item in statuses" :key="item.value" :label="item.label" :icon="item.icon" size="small" class="movement-filter-segment reimbursement-filter-segment" :class="{ 'movement-filter-segment--active': statusFilter === item.value }" @click="statusFilter = item.value" />
         </div>
-        <PSelect v-if="session.isAdmin" v-model="creatorFilter" :options="creators" option-label="label" option-value="value" class="mt-3" fluid />
+        <PSelect v-if="session.isOperator" v-model="creatorFilter" :options="creators" option-label="label" option-value="value" class="mt-3" fluid />
       </template>
     </PCard>
 
@@ -97,7 +97,7 @@ usePolling(load)
           <span v-if="movement.reimbursed_by_name"> da {{ movement.reimbursed_by_name }}</span>
         </p>
         <PButton
-          v-if="session.isAdmin"
+          v-if="session.isOperator"
           :label="movement.reimbursement_status === 'rimborsato' ? 'Segna da rimborsare' : 'Segna come rimborsato'"
           :icon="movement.reimbursement_status === 'rimborsato' ? 'pi pi-undo' : 'pi pi-check-circle'"
           :severity="movement.reimbursement_status === 'rimborsato' ? 'secondary' : 'success'"

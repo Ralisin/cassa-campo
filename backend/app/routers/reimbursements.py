@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
-from app.dependencies import AdminUser, CurrentUser, DbSession
+from app.dependencies import CurrentUser, DbSession, OperatorUser
 from app.models import Movement, MovementReimbursement, UserRole
 from app.notification_service import notify_reimbursement_completed
 from app.routers.movements import get_movement_or_404
@@ -32,7 +32,7 @@ def list_reimbursements(db: DbSession, user: CurrentUser) -> ReimbursementSummar
         .options(*reimbursement_load_options())
         .order_by(Movement.operation_date.desc(), Movement.created_at.desc())
     )
-    if user.role != UserRole.ADMIN:
+    if user.role not in (UserRole.ADMIN, UserRole.CASHIER):
         query = query.where(Movement.created_by == user.id)
     movements = list(db.scalars(query).unique().all())
     pending = [movement for movement in movements if not movement.reimbursement.reimbursed_at]
@@ -51,7 +51,7 @@ def update_reimbursement(
     movement_id: uuid.UUID,
     data: ReimbursementUpdate,
     db: DbSession,
-    admin: AdminUser,
+    operator: OperatorUser,
 ) -> ReimbursementSummary:
     movement = get_movement_or_404(db, movement_id)
     if not movement.reimbursement:
@@ -61,8 +61,8 @@ def update_reimbursement(
         )
     was_reimbursed = movement.reimbursement.reimbursed_at is not None
     movement.reimbursement.reimbursed_at = datetime.now(UTC) if data.reimbursed else None
-    movement.reimbursement.reimbursed_by = admin.id if data.reimbursed else None
-    if data.reimbursed and not was_reimbursed and movement.created_by != admin.id:
+    movement.reimbursement.reimbursed_by = operator.id if data.reimbursed else None
+    if data.reimbursed and not was_reimbursed and movement.created_by != operator.id:
         notify_reimbursement_completed(db, movement)
     db.commit()
-    return list_reimbursements(db, admin)
+    return list_reimbursements(db, operator)

@@ -9,7 +9,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from sqlalchemy import select
 
-from app.dependencies import AdminUser, DbSession
+from app.dependencies import DbSession, OperatorUser
 from app.models import (
     BalanceType,
     Movement,
@@ -294,7 +294,7 @@ def build_excel_report(db: DbSession) -> Workbook:
 
 
 @router.get("/excel")
-def export_excel(db: DbSession, _: AdminUser) -> StreamingResponse:
+def export_excel(db: DbSession, _: OperatorUser) -> StreamingResponse:
     workbook = build_excel_report(db)
     output = BytesIO()
     workbook.save(output)

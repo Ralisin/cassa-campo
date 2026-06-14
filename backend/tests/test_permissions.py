@@ -3,7 +3,7 @@ import uuid
 import pytest
 from fastapi import HTTPException
 
-from app.dependencies import can_edit_movement, require_admin
+from app.dependencies import can_edit_movement, require_admin, require_operator
 from app.models import User, UserRole
 
 
@@ -31,6 +31,12 @@ def test_admin_can_edit_other_users_movements() -> None:
     assert can_edit_movement(admin, uuid.uuid4())
 
 
+def test_cashier_can_edit_other_users_movements() -> None:
+    cashier = make_user(UserRole.CASHIER)
+
+    assert can_edit_movement(cashier, uuid.uuid4())
+
+
 def test_require_admin_accepts_admin() -> None:
     admin = make_user(UserRole.ADMIN)
 
@@ -40,5 +46,27 @@ def test_require_admin_accepts_admin() -> None:
 def test_require_admin_rejects_user() -> None:
     with pytest.raises(HTTPException) as exc_info:
         require_admin(make_user(UserRole.USER))
+
+    assert exc_info.value.status_code == 403
+
+
+def test_require_admin_rejects_cashier() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        require_admin(make_user(UserRole.CASHIER))
+
+    assert exc_info.value.status_code == 403
+
+
+def test_require_operator_accepts_admin_and_cashier() -> None:
+    admin = make_user(UserRole.ADMIN)
+    cashier = make_user(UserRole.CASHIER)
+
+    assert require_operator(admin) is admin
+    assert require_operator(cashier) is cashier
+
+
+def test_require_operator_rejects_user() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        require_operator(make_user(UserRole.USER))
 
     assert exc_info.value.status_code == 403

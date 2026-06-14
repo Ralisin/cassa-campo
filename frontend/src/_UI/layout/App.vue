@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { api } from '@/api'
@@ -15,6 +15,16 @@ const notifications = ref([])
 const unreadCount = ref(0)
 const notificationsLoading = ref(false)
 const pendingReimbursementCount = ref(0)
+const installDialogVisible = ref(false)
+const installPrompt = ref(null)
+const installPromptPending = ref(false)
+const installDismissedKey = 'install_prompt_dismissed_at'
+const installDismissalDuration = 7 * 24 * 60 * 60 * 1000
+let installDialogTimer
+const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
+  || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches
+  || window.navigator.standalone === true
 const userMenuItems = computed(() => [
   { separator: true },
   {
@@ -52,6 +62,60 @@ const notificationCountLabel = computed(() => unreadCount.value > 99 ? '99+' : S
 const reimbursementCountLabel = computed(() => (
   pendingReimbursementCount.value > 99 ? '99+' : String(pendingReimbursementCount.value)
 ))
+const installButtonLabel = computed(() => isIos ? 'Ho capito' : 'Installa ora')
+const installButtonIcon = computed(() => isIos ? 'pi pi-check' : 'pi pi-download')
+
+function canShowInstallDialog() {
+  if (isInstalled()) return false
+  const dismissedAt = Number(localStorage.getItem(installDismissedKey))
+  return !dismissedAt || Date.now() - dismissedAt > installDismissalDuration
+}
+
+function scheduleInstallDialog() {
+  if (!canShowInstallDialog()) return
+  window.clearTimeout(installDialogTimer)
+  installDialogTimer = window.setTimeout(() => {
+    installDialogVisible.value = true
+  }, 1200)
+}
+
+function captureInstallPrompt(event) {
+  event.preventDefault()
+  installPrompt.value = event
+  scheduleInstallDialog()
+}
+
+function dismissInstallDialog() {
+  installDialogVisible.value = false
+  localStorage.setItem(installDismissedKey, String(Date.now()))
+}
+
+async function installApp() {
+  if (isIos) {
+    dismissInstallDialog()
+    return
+  }
+  if (!installPrompt.value) return
+
+  installPromptPending.value = true
+  try {
+    await installPrompt.value.prompt()
+    const { outcome } = await installPrompt.value.userChoice
+    installPrompt.value = null
+    installDialogVisible.value = false
+    if (outcome === 'dismissed') {
+      localStorage.setItem(installDismissedKey, String(Date.now()))
+    }
+  } finally {
+    installPromptPending.value = false
+  }
+}
+
+function handleAppInstalled() {
+  installPrompt.value = null
+  installDialogVisible.value = false
+  localStorage.removeItem(installDismissedKey)
+}
 
 function notificationIcon(kind) {
   if (kind === 'reimbursement_completed') return 'pi pi-check-circle'
@@ -128,6 +192,10 @@ watch(
 )
 
 onMounted(async () => {
+  window.addEventListener('beforeinstallprompt', captureInstallPrompt)
+  window.addEventListener('appinstalled', handleAppInstalled)
+  if (isIos) scheduleInstallDialog()
+
   if (session.authenticated && !session.user) {
     await session.loadUser().catch(() => {
       session.logout()
@@ -136,6 +204,11 @@ onMounted(async () => {
   }
   await loadNotifications().catch(() => {})
   await loadReimbursementCount().catch(() => {})
+})
+onBeforeUnmount(() => {
+  window.clearTimeout(installDialogTimer)
+  window.removeEventListener('beforeinstallprompt', captureInstallPrompt)
+  window.removeEventListener('appinstalled', handleAppInstalled)
 })
 usePolling(loadNotifications, 15000)
 usePolling(loadReimbursementCount, 7000)
@@ -272,4 +345,40 @@ usePolling(loadReimbursementCount, 7000)
     </nav>
   </div>
   <RouterView v-else />
+
+  <PDialog
+    v-model:visible="installDialogVisible"
+    modal
+    :closable="false"
+    :draggable="false"
+    class="install-dialog w-[calc(100vw-2rem)] max-w-sm"
+  >
+    <div class="install-dialog__content">
+      <div class="install-dialog__icon">
+        <img src="/pwa-192x192.png" alt="" />
+      </div>
+      <div>
+        <p class="install-dialog__eyebrow">Cassa Campo sul tuo dispositivo</p>
+        <h2 class="install-dialog__title">Installa l'app</h2>
+        <p v-if="!isIos" class="install-dialog__description">
+          Aprila dalla schermata Home, a tutto schermo e sempre a portata di mano.
+        </p>
+        <div v-else class="install-dialog__ios-instructions">
+          <p>Per installarla su iPhone o iPad:</p>
+          <p><span>1</span> Tocca <i class="pi pi-upload" /> Condividi in Safari.</p>
+          <p><span>2</span> Scegli <strong>Aggiungi alla schermata Home</strong>.</p>
+        </div>
+      </div>
+      <div class="install-dialog__actions">
+        <PButton label="Non ora" text class="install-dialog__later" @click="dismissInstallDialog" />
+        <PButton
+          :label="installButtonLabel"
+          :icon="installButtonIcon"
+          :loading="installPromptPending"
+          class="install-dialog__install"
+          @click="installApp"
+        />
+      </div>
+    </div>
+  </PDialog>
 </template>

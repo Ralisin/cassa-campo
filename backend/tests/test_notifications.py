@@ -60,6 +60,7 @@ def test_reimbursement_notifications_reach_admin_and_requesting_user() -> None:
                 payment_method=PaymentMethod.CASH,
                 supplier="Supermercato",
                 unit=Branch.ESPLORATORI_GUIDE,
+                category="vitto",
                 amount=Decimal("24.50"),
                 notes="Spesa cambusa",
                 needs_reimbursement=True,

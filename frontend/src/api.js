@@ -17,6 +17,7 @@ function errorMessage(detail) {
         supplier: 'Fornitore',
         operation_date: 'Data operazione',
         notes: 'Note',
+        category: 'Categoria',
         cash_initial: 'Contanti iniziali',
       }
       return `${labels[field] ?? field ?? 'Dato'}: ${item.msg}`

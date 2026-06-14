@@ -6,7 +6,9 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
+    CampCategoryBudget,
     CampSettings,
+    ExpenseCategory,
     Movement,
     MovementReimbursement,
     MovementType,
@@ -16,7 +18,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.schemas import DashboardRead, MovementInput, MovementRead
+from app.schemas import CategorySummary, DashboardRead, MovementInput, MovementRead
 
 ZERO = Decimal("0.00")
 CAMP_TIMEZONE = ZoneInfo("Europe/Rome")
@@ -37,6 +39,7 @@ def movement_to_read(movement: Movement) -> MovementRead:
         supplier=movement.supplier,
         unit=movement.unit,
         balance_type=movement.balance_type,
+        category=movement.category,
         amount=movement.amount,
         notes=movement.notes,
         created_by=movement.created_by,
@@ -116,6 +119,14 @@ def get_dashboard(db: Session) -> DashboardRead:
         - withdrawals
         + deposits
     )
+    pending_reimbursements = Decimal(
+        db.scalar(
+            select(func.coalesce(func.sum(Movement.amount), 0))
+            .join(Movement.reimbursement)
+            .where(MovementReimbursement.reimbursed_at.is_(None))
+        )
+        or 0
+    )
     today_movements = db.scalars(
         select(Movement)
         .options(
@@ -125,11 +136,41 @@ def get_dashboard(db: Session) -> DashboardRead:
         .where(Movement.operation_date == camp_today())
         .order_by(Movement.created_at.desc())
     ).all()
+    category_rows = db.execute(
+        select(
+            ExpenseCategory.slug,
+            ExpenseCategory.label,
+            func.coalesce(CampCategoryBudget.amount, 0),
+            func.coalesce(func.sum(Movement.amount), 0),
+        )
+        .outerjoin(
+            CampCategoryBudget,
+            (CampCategoryBudget.category == ExpenseCategory.slug)
+            & (CampCategoryBudget.settings_id == settings.id if settings else False),
+        )
+        .outerjoin(
+            Movement,
+            (Movement.category == ExpenseCategory.slug) & (Movement.type == MovementType.EXPENSE),
+        )
+        .where(ExpenseCategory.active.is_(True))
+        .group_by(
+            ExpenseCategory.slug,
+            ExpenseCategory.label,
+            ExpenseCategory.position,
+            CampCategoryBudget.amount,
+        )
+        .order_by(ExpenseCategory.position)
+    ).all()
     return DashboardRead(
         max_budget=max_budget,
         spent=spent,
         remaining_budget=max_budget - spent,
         cash_balance=cash_balance,
+        pending_reimbursements=pending_reimbursements,
         bank_balance=bank_balance,
+        category_summaries=[
+            CategorySummary(category=slug, label=label, budget=budget, spent=category_spent)
+            for slug, label, budget, category_spent in category_rows
+        ],
         today_movements=[movement_to_read(item) for item in today_movements],
     )

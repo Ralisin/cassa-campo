@@ -29,9 +29,38 @@ def movement_input(unit: Branch = Branch.GRUPPO) -> MovementInput:
         payment_method=PaymentMethod.CASH,
         supplier="Fornitore",
         unit=unit,
+        category="varie",
         amount=Decimal("10.00"),
         notes="Spesa",
     )
+
+
+def test_expense_category_is_required() -> None:
+    with pytest.raises(ValidationError):
+        MovementInput(
+            operation_date=date.today(),
+            type=MovementType.EXPENSE,
+            payment_method=PaymentMethod.CASH,
+            supplier="Fornitore",
+            unit=Branch.GRUPPO,
+            amount=Decimal("10.00"),
+            notes="Spesa",
+        )
+
+
+def test_income_does_not_keep_an_expense_category() -> None:
+    data = MovementInput(
+        operation_date=date.today(),
+        type=MovementType.INCOME,
+        payment_method=PaymentMethod.CASH,
+        supplier="Quota",
+        unit=Branch.GRUPPO,
+        category="vitto",
+        amount=Decimal("10.00"),
+        notes="Entrata",
+    )
+
+    assert data.category is None
 
 
 def test_user_movement_is_forced_to_profile_branch() -> None:

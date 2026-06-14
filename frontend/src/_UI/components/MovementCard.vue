@@ -29,6 +29,10 @@ const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR'
               <span>{{ movement.unit }}</span>
               <span>·</span>
               <span>{{ movement.balance_type }}</span>
+              <template v-if="movement.category">
+                <span>·</span>
+                <span class="capitalize">{{ movement.category }}</span>
+              </template>
             </div>
             <div class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
               <i class="pi pi-user text-[10px]" />

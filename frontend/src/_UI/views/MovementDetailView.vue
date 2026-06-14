@@ -17,6 +17,7 @@ const rows = [
   ['pi pi-credit-card', 'Metodo', 'payment_method'],
   ['pi pi-users', 'Unità', 'unit'],
   ['pi pi-book', 'Bilancio', 'balance_type'],
+  ['pi pi-tag', 'Categoria', 'category'],
   ['pi pi-building', 'Fornitore', 'supplier'],
   ['pi pi-file-edit', 'Note', 'notes'],
 ]

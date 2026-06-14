@@ -19,6 +19,12 @@ const balanceTypes = [
   { label: 'Ordinario', value: 'O' },
   { label: 'Autofinanziamento', value: 'A' },
 ]
+const categories = [
+  { label: 'Vitto', value: 'vitto' },
+  { label: 'Alloggio', value: 'alloggio' },
+  { label: 'Trasporti', value: 'trasporti' },
+  { label: 'Varie', value: 'varie' },
+]
 const movementTypes = [
   { label: 'Entrata', value: 'entrata', icon: 'pi pi-arrow-down-left' },
   { label: 'Uscita', value: 'uscita', icon: 'pi pi-arrow-up-right' },
@@ -47,6 +53,7 @@ const form = reactive({
   supplier: '',
   unit: session.user?.branch ?? 'E/G',
   balance_type: 'C',
+  category: 'varie',
   amount: 0,
   notes: '',
   needs_reimbursement: false,
@@ -55,6 +62,7 @@ const amountInvalid = computed(() => submitted.value && (!Number.isFinite(Number
 const supplierInvalid = computed(() => submitted.value && !form.supplier.trim())
 const dateInvalid = computed(() => submitted.value && !form.operation_date)
 const notesInvalid = computed(() => submitted.value && !form.notes?.trim())
+const categoryInvalid = computed(() => submitted.value && form.type === 'uscita' && !form.category)
 
 watch(
   () => form.needs_reimbursement,
@@ -77,6 +85,8 @@ watch(
   () => form.type,
   (value, previous) => {
     if (!value) form.type = previous || 'uscita'
+    if (value === 'entrata') form.category = null
+    else if (!form.category) form.category = 'varie'
   },
 )
 
@@ -105,7 +115,7 @@ onMounted(async () => {
 async function submit() {
   submitted.value = true
   error.value = ''
-  if (amountInvalid.value || supplierInvalid.value || dateInvalid.value || notesInvalid.value) {
+  if (amountInvalid.value || supplierInvalid.value || dateInvalid.value || notesInvalid.value || categoryInvalid.value) {
     return
   }
   saving.value = true
@@ -164,13 +174,23 @@ async function submit() {
           </section>
 
           <section class="space-y-3">
-            <div><label for="date">Data operazione <span class="required-mark">*</span></label><PDatePicker id="date" v-model="operationDate" date-format="dd/mm/yy" show-icon icon-display="input" :manual-input="false" :invalid="dateInvalid" fluid /><small v-if="dateInvalid" class="field-error">La data operazione è obbligatoria.</small></div>
-            <div><label for="supplier">Fornitore <span class="required-mark">*</span></label><PInputText id="supplier" v-model="form.supplier" :invalid="supplierInvalid" placeholder="Es. Esselunga" fluid /><small v-if="supplierInvalid" class="field-error">Il fornitore è obbligatorio.</small></div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="movement-form-field-pair">
+              <div><label for="date">Data operazione <span class="required-mark">*</span></label><PDatePicker id="date" v-model="operationDate" date-format="dd/mm/yy" show-icon icon-display="input" :manual-input="false" :invalid="dateInvalid" fluid /><small v-if="dateInvalid" class="field-error">La data operazione è obbligatoria.</small></div>
+              <div><label for="supplier">Fornitore <span class="required-mark">*</span></label><PInputText id="supplier" v-model="form.supplier" :invalid="supplierInvalid" placeholder="Es. Esselunga" fluid /><small v-if="supplierInvalid" class="field-error">Il fornitore è obbligatorio.</small></div>
+            </div>
+            <div class="movement-form-field-pair">
               <div><label for="unit">Unità</label><PSelect id="unit" v-model="form.unit" :options="units" :disabled="unitReadOnly" fluid /><small v-if="unitReadOnly" class="mt-1 block text-[0.67rem] font-medium text-slate-500">Definita dal tuo profilo.</small></div>
               <div><label for="balance-type">Bilancio</label><PSelect id="balance-type" v-model="form.balance_type" :options="balanceTypes" option-label="label" option-value="value" fluid /></div>
             </div>
-            <div><label for="amount">Importo <span class="required-mark">*</span></label><PInputNumber id="amount" v-model="form.amount" mode="currency" currency="EUR" locale="it-IT" :min="0.01" :invalid="amountInvalid" fluid /><small v-if="amountInvalid" class="field-error">Inserisci un importo maggiore di zero.</small></div>
+            <div v-if="form.type === 'uscita'" class="movement-form-field-pair">
+              <div>
+                <label for="category">Categoria <span class="required-mark">*</span></label>
+                <PSelect id="category" v-model="form.category" :options="categories" option-label="label" option-value="value" :invalid="categoryInvalid" placeholder="Seleziona una categoria" fluid />
+                <small v-if="categoryInvalid" class="field-error">La categoria è obbligatoria per le uscite.</small>
+              </div>
+              <div><label for="amount">Importo <span class="required-mark">*</span></label><PInputNumber id="amount" v-model="form.amount" mode="currency" currency="EUR" locale="it-IT" :min="0.01" :invalid="amountInvalid" fluid /><small v-if="amountInvalid" class="field-error">Inserisci un importo maggiore di zero.</small></div>
+            </div>
+            <div v-else><label for="amount">Importo <span class="required-mark">*</span></label><PInputNumber id="amount" v-model="form.amount" mode="currency" currency="EUR" locale="it-IT" :min="0.01" :invalid="amountInvalid" fluid /><small v-if="amountInvalid" class="field-error">Inserisci un importo maggiore di zero.</small></div>
             <div><label for="notes">Note <span class="required-mark">*</span></label><PTextarea id="notes" v-model="form.notes" rows="2" :invalid="notesInvalid" placeholder="Descrivi il movimento..." fluid /><small v-if="notesInvalid" class="field-error">Le note sono obbligatorie.</small></div>
           </section>
 

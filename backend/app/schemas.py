@@ -1,10 +1,13 @@
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models import BalanceType, Branch, MovementType, PaymentMethod, TransferType, UserRole
+
+ExpenseCategorySlug = Literal["vitto", "alloggio", "trasporti", "varie"]
 
 
 class ApiModel(BaseModel):
@@ -53,12 +56,17 @@ class MovementInput(BaseModel):
     supplier: str = Field(min_length=1, max_length=255)
     unit: Branch
     balance_type: BalanceType = BalanceType.CAMP
+    category: ExpenseCategorySlug | None = None
     amount: Decimal = Field(gt=0, decimal_places=2)
     notes: str = Field(min_length=1)
     needs_reimbursement: bool = False
 
     @model_validator(mode="after")
     def validate_reimbursement(self) -> "MovementInput":
+        if self.type == MovementType.EXPENSE and self.category is None:
+            raise ValueError("An expense category is required")
+        if self.type == MovementType.INCOME:
+            self.category = None
         if self.needs_reimbursement and (
             self.type != MovementType.EXPENSE or self.payment_method != PaymentMethod.CASH
         ):
@@ -75,6 +83,7 @@ class MovementRead(ApiModel):
     supplier: str
     unit: str
     balance_type: BalanceType
+    category: str | None
     amount: Decimal
     notes: str | None
     created_by: uuid.UUID
@@ -149,11 +158,14 @@ class SettingsInput(BaseModel):
     participants: int = Field(ge=0)
     quota_per_person: Decimal = Field(ge=0)
     cash_initial: Decimal = Field(ge=0)
+    category_budgets: dict[ExpenseCategorySlug, Decimal] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_cash_initial(self) -> "SettingsInput":
         if self.cash_initial > self.participants * self.quota_per_person:
             raise ValueError("Initial cash cannot exceed the camp budget")
+        if any(amount < 0 for amount in self.category_budgets.values()):
+            raise ValueError("Category budgets cannot be negative")
         return self
 
 
@@ -166,6 +178,14 @@ class SettingsRead(ApiModel):
     max_budget: Decimal
     cash_initial: Decimal
     bank_initial: Decimal
+    category_budgets: dict[str, Decimal]
+
+
+class CategorySummary(BaseModel):
+    category: str
+    label: str
+    budget: Decimal
+    spent: Decimal
 
 
 class DashboardRead(BaseModel):
@@ -173,5 +193,7 @@ class DashboardRead(BaseModel):
     spent: Decimal
     remaining_budget: Decimal
     cash_balance: Decimal
+    pending_reimbursements: Decimal
     bank_balance: Decimal
+    category_summaries: list[CategorySummary]
     today_movements: list[MovementRead]

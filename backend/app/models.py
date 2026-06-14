@@ -72,6 +72,37 @@ class CampSettings(Base):
     bank_initial: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    category_budgets: Mapped[list["CampCategoryBudget"]] = relationship(
+        back_populates="settings", cascade="all, delete-orphan"
+    )
+
+
+class ExpenseCategory(Base):
+    __tablename__ = "expense_categories"
+
+    slug: Mapped[str] = mapped_column(String(50), primary_key=True)
+    label: Mapped[str] = mapped_column(String(100), unique=True)
+    position: Mapped[int]
+    active: Mapped[bool] = mapped_column(default=True)
+
+    movements: Mapped[list["Movement"]] = relationship(back_populates="expense_category")
+    budgets: Mapped[list["CampCategoryBudget"]] = relationship(back_populates="expense_category")
+
+
+class CampCategoryBudget(Base):
+    __tablename__ = "camp_category_budgets"
+
+    settings_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("camp_settings.id", ondelete="CASCADE"), primary_key=True
+    )
+    category: Mapped[str] = mapped_column(
+        ForeignKey("expense_categories.slug"), primary_key=True
+    )
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
+
+    settings: Mapped[CampSettings] = relationship(back_populates="category_budgets")
+    expense_category: Mapped[ExpenseCategory] = relationship(back_populates="budgets")
+
 
 class Movement(Base):
     __tablename__ = "movements"
@@ -86,11 +117,13 @@ class Movement(Base):
     balance_type: Mapped[BalanceType] = mapped_column(
         Enum(BalanceType), default=BalanceType.CAMP
     )
+    category: Mapped[str | None] = mapped_column(ForeignKey("expense_categories.slug"))
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
 
     creator: Mapped[User] = relationship(back_populates="movements")
+    expense_category: Mapped[ExpenseCategory | None] = relationship(back_populates="movements")
     reimbursement: Mapped["MovementReimbursement | None"] = relationship(
         back_populates="movement", cascade="all, delete-orphan", uselist=False
     )

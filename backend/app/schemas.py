@@ -86,6 +86,18 @@ class MovementRead(ApiModel):
     reimbursed_by_name: str | None
 
 
+class MovementCreatorRead(BaseModel):
+    id: uuid.UUID
+    name: str
+
+
+class MovementPage(BaseModel):
+    items: list[MovementRead]
+    next_cursor: str | None
+    total: int
+    creators: list[MovementCreatorRead]
+
+
 class ReimbursementUpdate(BaseModel):
     reimbursed: bool
 
@@ -96,6 +108,21 @@ class ReimbursementSummary(BaseModel):
     pending_count: int
     reimbursed_count: int
     movements: list[MovementRead]
+
+
+class NotificationRead(ApiModel):
+    id: uuid.UUID
+    movement_id: uuid.UUID
+    kind: str
+    title: str
+    message: str
+    created_at: datetime
+    read_at: datetime | None
+
+
+class NotificationList(BaseModel):
+    items: list[NotificationRead]
+    unread_count: int
 
 
 class TransferInput(BaseModel):

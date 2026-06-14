@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 
 import { api } from '@/api'
 import MovementCard from '@/_UI/components/MovementCard.vue'
+import { usePolling } from '@/composables/usePolling'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
@@ -55,6 +56,7 @@ function formatDateTime(value) {
 }
 
 onMounted(load)
+usePolling(load)
 </script>
 
 <template>

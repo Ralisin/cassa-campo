@@ -1,10 +1,16 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api'
+import { usePolling } from '@/composables/usePolling'
 import MovementCard from '@/_UI/components/MovementCard.vue'
 
 const movements = ref([])
+const creatorOptions = ref([])
+const nextCursor = ref(null)
+const total = ref(0)
+const loading = ref(false)
+const loadMoreSentinel = ref(null)
 const router = useRouter()
 const query = ref('')
 const type = ref('tutti')
@@ -36,14 +42,7 @@ const dateFormatter = new Intl.DateTimeFormat('it-IT', {
 })
 const creators = computed(() => [
   { label: 'Tutti gli utenti', value: 'tutti' },
-  ...Array.from(
-    new Map(
-      movements.value.map((movement) => [
-        movement.created_by,
-        { label: movement.creator_name, value: movement.created_by },
-      ]),
-    ).values(),
-  ).sort((first, second) => first.label.localeCompare(second.label, 'it')),
+  ...creatorOptions.value.map((item) => ({ label: item.name, value: item.id })),
 ])
 const activeFilters = computed(() => [
   query.value.trim(),
@@ -52,24 +51,104 @@ const activeFilters = computed(() => [
   creator.value !== 'tutti',
   reimbursement.value !== 'tutti',
 ].filter(Boolean).length)
-const filtered = computed(() => movements.value.filter((movement) => {
-  const text = `${movement.supplier} ${movement.notes ?? ''} ${movement.creator_name} ${movement.creator_email}`.toLowerCase()
-  return text.includes(query.value.toLowerCase())
-    && (type.value === 'tutti' || movement.type === type.value)
-    && (method.value === 'tutti' || movement.payment_method === method.value)
-    && (creator.value === 'tutti' || movement.created_by === creator.value)
-    && (
-      reimbursement.value === 'tutti'
-      || (reimbursement.value === 'nessuno' && !movement.reimbursement_status)
-      || movement.reimbursement_status === reimbursement.value
-    )
-}))
-const grouped = computed(() => filtered.value.reduce((groups, movement) => {
+const grouped = computed(() => movements.value.reduce((groups, movement) => {
   groups[movement.operation_date] ??= []
   groups[movement.operation_date].push(movement)
   return groups
 }, {}))
-onMounted(async () => (movements.value = await api.get('/movements')))
+
+let requestVersion = 0
+let searchTimer
+let infiniteScrollObserver
+
+async function rearmInfiniteScroll() {
+  await nextTick()
+  if (!infiniteScrollObserver || !loadMoreSentinel.value) return
+  infiniteScrollObserver.unobserve(loadMoreSentinel.value)
+  infiniteScrollObserver.observe(loadMoreSentinel.value)
+}
+
+function movementsPath(cursor = null) {
+  const params = new URLSearchParams()
+  if (cursor) params.set('cursor', cursor)
+  if (query.value.trim()) params.set('query', query.value.trim())
+  if (type.value !== 'tutti') params.set('movement_type', type.value)
+  if (method.value !== 'tutti') params.set('payment_method', method.value)
+  if (creator.value !== 'tutti') params.set('creator', creator.value)
+  if (reimbursement.value !== 'tutti') params.set('reimbursement', reimbursement.value)
+  return `/movements?${params}`
+}
+
+async function loadFirstPage() {
+  const version = ++requestVersion
+  loading.value = true
+  try {
+    const page = await api.get(movementsPath())
+    if (version !== requestVersion) return
+    movements.value = page.items
+    creatorOptions.value = page.creators
+    nextCursor.value = page.next_cursor
+    total.value = page.total
+  } finally {
+    if (version === requestVersion) {
+      loading.value = false
+      rearmInfiniteScroll()
+    }
+  }
+}
+
+async function loadMore() {
+  if (!nextCursor.value || loading.value) return
+  const version = requestVersion
+  loading.value = true
+  try {
+    const page = await api.get(movementsPath(nextCursor.value))
+    if (version !== requestVersion) return
+    movements.value = [...movements.value, ...page.items]
+    nextCursor.value = page.next_cursor
+    total.value = page.total
+  } finally {
+    if (version === requestVersion) {
+      loading.value = false
+      rearmInfiniteScroll()
+    }
+  }
+}
+
+async function refreshFirstPage() {
+  const version = requestVersion
+  const page = await api.get(movementsPath())
+  if (version !== requestVersion) return
+  const firstPageIds = new Set(page.items.map((movement) => movement.id))
+  movements.value = [
+    ...page.items,
+    ...movements.value.filter((movement) => !firstPageIds.has(movement.id)),
+  ]
+  creatorOptions.value = page.creators
+  total.value = page.total
+}
+
+onMounted(() => {
+  infiniteScrollObserver = new IntersectionObserver(
+    ([entry]) => {
+      if (entry.isIntersecting) loadMore()
+    },
+    { rootMargin: '300px 0px' },
+  )
+  infiniteScrollObserver.observe(loadMoreSentinel.value)
+  loadFirstPage()
+})
+usePolling(refreshFirstPage)
+
+watch([type, method, creator, reimbursement], loadFirstPage)
+watch(query, () => {
+  window.clearTimeout(searchTimer)
+  searchTimer = window.setTimeout(loadFirstPage, 300)
+})
+onUnmounted(() => {
+  window.clearTimeout(searchTimer)
+  infiniteScrollObserver?.disconnect()
+})
 
 function resetFilters() {
   query.value = ''
@@ -104,7 +183,7 @@ function formatDate(date) {
           <span class="movement-filters-toggle__icon"><i class="pi pi-sliders-h" /></span>
           <span class="min-w-0 flex-1 text-left">
             <strong class="block text-xs text-slate-800">Filtri</strong>
-            <span class="block text-[11px] font-medium text-slate-500">{{ filtered.length }} risultati</span>
+            <span class="block text-[11px] font-medium text-slate-500">{{ total }} risultati</span>
           </span>
           <span v-if="activeFilters" class="movement-filters-toggle__count">{{ activeFilters }} attivi</span>
           <span class="movement-filters-toggle__chevron" :class="{ 'movement-filters-toggle__chevron--collapsed': filtersCollapsed }"><i class="pi pi-chevron-up" /></span>
@@ -184,13 +263,17 @@ function formatDate(date) {
         </div>
       </Transition>
     </section>
-    <PCard v-if="!filtered.length" class="movements-empty">
+    <div ref="loadMoreSentinel" class="flex min-h-12 items-center justify-center py-2" aria-live="polite">
+      <i v-if="loading && movements.length" class="pi pi-spin pi-spinner text-xl text-forest" aria-hidden="true" />
+      <span v-if="loading && movements.length" class="sr-only">Caricamento altri movimenti</span>
+    </div>
+    <PCard v-if="!loading && !movements.length" class="movements-empty">
       <template #content>
         <div class="grid place-items-center py-8 text-center">
           <PAvatar icon="pi pi-receipt" size="xlarge" shape="circle" class="!bg-emerald-50 !text-forest" />
-          <h2 class="mt-4 text-base font-black text-slate-800">{{ movements.length ? 'Nessun risultato' : 'Nessun movimento' }}</h2>
-          <p class="mt-1 max-w-xs text-sm text-slate-500">{{ movements.length ? 'Prova a modificare ricerca o filtri.' : 'Inserisci il primo movimento per iniziare a tenere sotto controllo il campo.' }}</p>
-          <PButton v-if="!movements.length" label="Inserisci movimento" icon="pi pi-plus" class="primary-cta mt-5" @click="router.push('/movimenti/nuovo')" />
+          <h2 class="mt-4 text-base font-black text-slate-800">{{ activeFilters ? 'Nessun risultato' : 'Nessun movimento' }}</h2>
+          <p class="mt-1 max-w-xs text-sm text-slate-500">{{ activeFilters ? 'Prova a modificare ricerca o filtri.' : 'Inserisci il primo movimento per iniziare a tenere sotto controllo il campo.' }}</p>
+          <PButton v-if="!activeFilters" label="Inserisci movimento" icon="pi pi-plus" class="primary-cta mt-5" @click="router.push('/movimenti/nuovo')" />
           <PButton v-else label="Azzera filtri" icon="pi pi-filter-slash" text class="mt-3" @click="resetFilters" />
         </div>
       </template>

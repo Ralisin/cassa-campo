@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/api'
+import { usePolling } from '@/composables/usePolling'
 import MovementCard from '@/_UI/components/MovementCard.vue'
 
 const dashboard = ref(null)
@@ -11,7 +12,13 @@ const cashCards = computed(() => dashboard.value ? [
   { label: 'Cassa contanti', value: dashboard.value.cash_balance, icon: 'pi pi-wallet', severity: 'success' },
   { label: 'Cassa banca', value: dashboard.value.bank_balance, icon: 'pi pi-credit-card', severity: 'info' },
 ] : [])
-onMounted(async () => (dashboard.value = await api.get('/dashboard')))
+
+async function loadDashboard() {
+  dashboard.value = await api.get('/dashboard')
+}
+
+onMounted(loadDashboard)
+usePolling(loadDashboard)
 </script>
 
 <template>

@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import { api, downloadExcel } from '@/api'
+import { usePolling } from '@/composables/usePolling'
 import { useSessionStore } from '@/stores/session'
 
 const dashboard = ref(null)
@@ -9,6 +10,7 @@ const settingsDialog = ref(false)
 const transferDialog = ref(false)
 const savingSettings = ref(false)
 const savingTransfer = ref(false)
+const exportingReport = ref(false)
 const settingsError = ref('')
 const transferError = ref('')
 const transfers = ref([])
@@ -116,7 +118,21 @@ function transferDirection(item) {
   return item.type === 'prelievo' ? 'Carta -> Contanti' : 'Contanti -> Carta'
 }
 
-onMounted(() => Promise.all([loadDashboard(), loadTransfers()]))
+async function loadSummary() {
+  await Promise.all([loadDashboard(), loadTransfers()])
+}
+
+async function exportReport() {
+  exportingReport.value = true
+  try {
+    await downloadExcel()
+  } finally {
+    exportingReport.value = false
+  }
+}
+
+onMounted(loadSummary)
+usePolling(loadSummary)
 </script>
 
 <template>
@@ -201,16 +217,30 @@ onMounted(() => Promise.all([loadDashboard(), loadTransfers()]))
       </PCard>
     </section>
 
-    <PButton
-      v-if="session.isAdmin"
-      label="Esporta report"
-      icon="pi pi-download"
-      size="large"
-      outlined
-      fluid
-      class="summary-export-button"
-      @click="downloadExcel"
-    />
+    <section v-if="session.isAdmin" class="summary-section">
+      <div class="summary-section-header">
+        <h2 class="section-title">Esportazione</h2>
+      </div>
+      <PCard class="summary-list-card">
+        <template #content>
+          <div class="summary-export-row">
+            <PAvatar icon="pi pi-file-excel" size="large" shape="square" class="summary-row__icon summary-row__icon--forest" />
+            <div class="summary-export-copy">
+              <p class="summary-export-copy__title">Report completo</p>
+              <p class="summary-export-copy__meta">File Excel (.xlsx)</p>
+            </div>
+            <PButton
+              label="Scarica"
+              icon="pi pi-download"
+              size="small"
+              class="summary-export-button"
+              :loading="exportingReport"
+              @click="exportReport"
+            />
+          </div>
+        </template>
+      </PCard>
+    </section>
 
     <PDialog v-model:visible="settingsDialog" modal header="Imposta dati campo e saldi" class="summary-dialog w-[calc(100vw-2rem)] max-w-md">
       <form class="summary-dialog__form" @submit.prevent="saveInitialBalances">

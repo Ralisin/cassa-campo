@@ -2,12 +2,19 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { api } from '@/api'
+import { usePolling } from '@/composables/usePolling'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
 const route = useRoute()
 const router = useRouter()
 const userMenu = ref()
+const notificationsPopover = ref()
+const notifications = ref([])
+const unreadCount = ref(0)
+const notificationsLoading = ref(false)
+const pendingReimbursementCount = ref(0)
 const userMenuItems = computed(() => [
   { separator: true },
   {
@@ -41,6 +48,68 @@ const pageDirection = ref('forward')
 const navMotion = ref('idle')
 let navMotionTimer
 const pageTransitionName = computed(() => `menu-page-${pageDirection.value}`)
+const notificationCountLabel = computed(() => unreadCount.value > 99 ? '99+' : String(unreadCount.value))
+const reimbursementCountLabel = computed(() => (
+  pendingReimbursementCount.value > 99 ? '99+' : String(pendingReimbursementCount.value)
+))
+
+function notificationIcon(kind) {
+  if (kind === 'reimbursement_completed') return 'pi pi-check-circle'
+  if (kind === 'reimbursement_requested') return 'pi pi-replay'
+  return 'pi pi-plus'
+}
+
+function notificationTarget(notification) {
+  return notification.kind === 'reimbursement_completed'
+    ? '/rimborsi'
+    : `/movimenti/${notification.movement_id}`
+}
+
+function formatNotificationDate(value) {
+  return new Intl.DateTimeFormat('it-IT', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+async function loadNotifications() {
+  if (!session.authenticated || route.path === '/login') return
+  notificationsLoading.value = true
+  try {
+    const result = await api.get('/notifications')
+    notifications.value = result.items
+    unreadCount.value = result.unread_count
+  } finally {
+    notificationsLoading.value = false
+  }
+}
+
+async function loadReimbursementCount() {
+  if (!session.authenticated || route.path === '/login') return
+  const result = await api.get('/reimbursements')
+  pendingReimbursementCount.value = result.pending_count
+}
+
+async function toggleNotifications(event) {
+  notificationsPopover.value.toggle(event)
+  await loadNotifications()
+}
+
+async function openNotification(notification) {
+  if (!notification.read_at) {
+    await api.put(`/notifications/${notification.id}/read`)
+  }
+  notificationsPopover.value.hide()
+  await loadNotifications()
+  await router.push(notificationTarget(notification))
+}
+
+async function markAllRead() {
+  await api.put('/notifications/read-all')
+  await loadNotifications()
+}
 
 watch(
   () => route.meta.nav,
@@ -65,7 +134,11 @@ onMounted(async () => {
       router.push('/login')
     })
   }
+  await loadNotifications().catch(() => {})
+  await loadReimbursementCount().catch(() => {})
 })
+usePolling(loadNotifications, 15000)
+usePolling(loadReimbursementCount, 7000)
 </script>
 
 <template>
@@ -96,7 +169,58 @@ onMounted(async () => {
         </PMenu>
       </template>
       <template #center><h1 class="text-center text-base font-black text-slate-900">{{ route.meta.title }}</h1></template>
-      <template #end><PButton icon="pi pi-bell" text rounded aria-label="Notifiche" /></template>
+      <template #end>
+        <div class="notification-bell">
+          <PButton icon="pi pi-bell" text rounded aria-label="Notifiche" @click="toggleNotifications" />
+          <span v-if="unreadCount" class="notification-bell__badge">{{ notificationCountLabel }}</span>
+        </div>
+        <PPopover ref="notificationsPopover" class="notifications-popover">
+          <div class="notifications-panel">
+            <div class="notifications-panel__header">
+              <div>
+                <p class="text-sm font-black text-slate-900">Notifiche</p>
+                <p class="text-xs text-slate-500">{{ unreadCount ? `${unreadCount} da leggere` : 'Sei al corrente di tutto' }}</p>
+              </div>
+              <PButton
+                v-if="unreadCount"
+                label="Segna lette"
+                text
+                size="small"
+                class="notifications-panel__read-all"
+                @click="markAllRead"
+              />
+            </div>
+
+            <div v-if="notificationsLoading && !notifications.length" class="notifications-panel__empty">
+              Caricamento notifiche...
+            </div>
+            <div v-else-if="!notifications.length" class="notifications-panel__empty">
+              <i class="pi pi-bell-slash" />
+              <span>Nessuna notifica per ora</span>
+            </div>
+            <template v-else>
+              <button
+                v-for="notification in notifications"
+                :key="notification.id"
+                type="button"
+                class="notification-item"
+                :class="{ 'notification-item--unread': !notification.read_at }"
+                @click="openNotification(notification)"
+              >
+                <span class="notification-item__icon" :class="`notification-item__icon--${notification.kind}`">
+                  <i :class="notificationIcon(notification.kind)" />
+                </span>
+                <span class="min-w-0 flex-1 text-left">
+                  <span class="notification-item__title">{{ notification.title }}</span>
+                  <span class="notification-item__message">{{ notification.message }}</span>
+                  <span class="notification-item__date">{{ formatNotificationDate(notification.created_at) }}</span>
+                </span>
+                <span v-if="!notification.read_at" class="notification-item__dot" aria-label="Non letta" />
+              </button>
+            </template>
+          </div>
+        </PPopover>
+      </template>
     </PToolbar>
 
     <div class="menu-page-shell px-4 py-5">
@@ -136,6 +260,13 @@ onMounted(async () => {
           class="mobile-tabbar__icon"
           :class="{ 'mobile-tabbar__icon--active': route.meta.nav === item.key }"
         />
+        <span
+          v-if="item.key === 'reimbursements' && pendingReimbursementCount"
+          class="mobile-tabbar__badge"
+          :aria-label="`${pendingReimbursementCount} rimborsi da fare`"
+        >
+          {{ reimbursementCountLabel }}
+        </span>
         <span class="mobile-tabbar__label">{{ item.label }}</span>
       </RouterLink>
     </nav>

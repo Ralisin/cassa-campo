@@ -1,15 +1,40 @@
+import base64
+import binascii
+import json
 import uuid
+from datetime import date, datetime
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Response, status
-from sqlalchemy import select
+from fastapi import APIRouter, HTTPException, Query, Response, status
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import joinedload
 
-from app.dependencies import AdminUser, CurrentUser, DbSession, can_edit_movement
-from app.models import Movement, MovementReimbursement
-from app.schemas import MovementInput, MovementRead
+from app.dependencies import CurrentUser, DbSession, can_edit_movement
+from app.models import Movement, MovementReimbursement, MovementType, PaymentMethod, User
+from app.notification_service import notify_admins_of_movement
+from app.schemas import MovementCreatorRead, MovementInput, MovementPage, MovementRead
 from app.services import apply_movement_input, enforce_user_branch, movement_to_read
 
 router = APIRouter(prefix="/movements", tags=["movements"])
+
+PAGE_SIZE = 50
+
+
+def encode_cursor(movement: Movement) -> str:
+    payload = json.dumps(
+        [movement.operation_date.isoformat(), movement.created_at.isoformat(), str(movement.id)],
+        separators=(",", ":"),
+    ).encode()
+    return base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+
+def decode_cursor(cursor: str) -> tuple[date, datetime, uuid.UUID]:
+    try:
+        payload = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4))
+        operation_date, created_at, movement_id = json.loads(payload)
+        return date.fromisoformat(operation_date), datetime.fromisoformat(created_at), uuid.UUID(movement_id)
+    except (binascii.Error, UnicodeDecodeError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid cursor") from exc
 
 
 def get_movement_or_404(db: DbSession, movement_id: uuid.UUID) -> Movement:
@@ -26,17 +51,95 @@ def get_movement_or_404(db: DbSession, movement_id: uuid.UUID) -> Movement:
     return movement
 
 
-@router.get("", response_model=list[MovementRead])
-def list_movements(db: DbSession, _: CurrentUser) -> list[MovementRead]:
-    movements = db.scalars(
+@router.get("", response_model=MovementPage)
+def list_movements(
+    db: DbSession,
+    _: CurrentUser,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = PAGE_SIZE,
+    query: Annotated[str | None, Query(max_length=255)] = None,
+    movement_type: MovementType | None = None,
+    payment_method: PaymentMethod | None = None,
+    creator: uuid.UUID | None = None,
+    reimbursement: Annotated[str | None, Query(pattern="^(da_rimborsare|rimborsato|nessuno)$")] = None,
+) -> MovementPage:
+    filters = []
+    if query and (term := query.strip()):
+        pattern = f"%{term}%"
+        filters.append(
+            or_(
+                Movement.supplier.ilike(pattern),
+                Movement.notes.ilike(pattern),
+                User.name.ilike(pattern),
+                User.email.ilike(pattern),
+            )
+        )
+    if movement_type:
+        filters.append(Movement.type == movement_type)
+    if payment_method:
+        filters.append(Movement.payment_method == payment_method)
+    if creator:
+        filters.append(Movement.created_by == creator)
+    if reimbursement == "nessuno":
+        filters.append(MovementReimbursement.id.is_(None))
+    elif reimbursement == "da_rimborsare":
+        filters.extend(
+            [MovementReimbursement.id.is_not(None), MovementReimbursement.reimbursed_at.is_(None)]
+        )
+    elif reimbursement == "rimborsato":
+        filters.append(MovementReimbursement.reimbursed_at.is_not(None))
+
+    base_query = (
         select(Movement)
+        .join(Movement.creator)
+        .outerjoin(Movement.reimbursement)
         .options(
             joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
             joinedload(Movement.creator),
         )
-        .order_by(Movement.operation_date.desc(), Movement.created_at.desc())
+        .where(*filters)
+    )
+    total = db.scalar(
+        select(func.count(Movement.id))
+        .join(Movement.creator)
+        .outerjoin(Movement.reimbursement)
+        .where(*filters)
+    ) or 0
+    if cursor:
+        cursor_date, cursor_created_at, cursor_id = decode_cursor(cursor)
+        base_query = base_query.where(
+            or_(
+                Movement.operation_date < cursor_date,
+                and_(
+                    Movement.operation_date == cursor_date,
+                    Movement.created_at < cursor_created_at,
+                ),
+                and_(
+                    Movement.operation_date == cursor_date,
+                    Movement.created_at == cursor_created_at,
+                    Movement.id < cursor_id,
+                ),
+            )
+        )
+    movements = db.scalars(
+        base_query
+        .order_by(Movement.operation_date.desc(), Movement.created_at.desc(), Movement.id.desc())
+        .limit(limit + 1)
+    ).unique().all()
+    has_more = len(movements) > limit
+    movements = movements[:limit]
+    creators = db.execute(
+        select(User.id, User.name)
+        .join(Movement, Movement.created_by == User.id)
+        .distinct()
+        .order_by(User.name)
     ).all()
-    return [movement_to_read(item) for item in movements]
+    return MovementPage(
+        items=[movement_to_read(item) for item in movements],
+        next_cursor=encode_cursor(movements[-1]) if has_more else None,
+        total=total,
+        creators=[MovementCreatorRead(id=item.id, name=item.name) for item in creators],
+    )
 
 
 @router.get("/{movement_id}", response_model=MovementRead)
@@ -50,6 +153,13 @@ def create_movement(data: MovementInput, db: DbSession, user: CurrentUser) -> Mo
     movement = Movement(created_by=user.id)
     apply_movement_input(movement, data)
     db.add(movement)
+    db.flush()
+    notify_admins_of_movement(
+        db,
+        movement,
+        user,
+        reimbursement_requested=data.needs_reimbursement,
+    )
     db.commit()
     db.refresh(movement)
     return movement_to_read(get_movement_or_404(db, movement.id))
@@ -63,15 +173,21 @@ def update_movement(
     if not can_edit_movement(user, movement.created_by):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     enforce_user_branch(data, user)
+    reimbursement_requested = movement.reimbursement is None and data.needs_reimbursement
     apply_movement_input(movement, data)
+    if reimbursement_requested:
+        notify_admins_of_movement(db, movement, user, reimbursement_requested=True)
     db.commit()
     return movement_to_read(get_movement_or_404(db, movement.id))
 
 
 @router.delete("/{movement_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_movement(
-    movement_id: uuid.UUID, db: DbSession, _: AdminUser
+    movement_id: uuid.UUID, db: DbSession, user: CurrentUser
 ) -> Response:
-    db.delete(get_movement_or_404(db, movement_id))
+    movement = get_movement_or_404(db, movement_id)
+    if not can_edit_movement(user, movement.created_by):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    db.delete(movement)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -8,6 +8,7 @@ from sqlalchemy.orm import joinedload
 
 from app.dependencies import AdminUser, CurrentUser, DbSession
 from app.models import Movement, MovementReimbursement, UserRole
+from app.notification_service import notify_reimbursement_completed
 from app.routers.movements import get_movement_or_404
 from app.schemas import ReimbursementSummary, ReimbursementUpdate
 from app.services import movement_to_read
@@ -58,7 +59,10 @@ def update_reimbursement(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Il movimento non richiede un rimborso",
         )
+    was_reimbursed = movement.reimbursement.reimbursed_at is not None
     movement.reimbursement.reimbursed_at = datetime.now(UTC) if data.reimbursed else None
     movement.reimbursement.reimbursed_by = admin.id if data.reimbursed else None
+    if data.reimbursed and not was_reimbursed and movement.created_by != admin.id:
+        notify_reimbursement_completed(db, movement)
     db.commit()
     return list_reimbursements(db, admin)

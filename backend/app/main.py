@@ -7,6 +7,7 @@ from app.routers import (
     dashboard,
     exports,
     movements,
+    notifications,
     reimbursements,
     settings as settings_router,
     transfers,
@@ -25,6 +26,7 @@ app.add_middleware(
 app.include_router(auth.router)
 app.include_router(dashboard.router)
 app.include_router(movements.router)
+app.include_router(notifications.router)
 app.include_router(settings_router.router)
 app.include_router(exports.router)
 app.include_router(users.router)

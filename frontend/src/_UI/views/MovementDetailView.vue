@@ -61,11 +61,11 @@ async function toggleReimbursed() {
             <i :class="icon" class="text-slate-500" /><span class="flex-1 font-semibold text-slate-600">{{ label }}</span><span class="text-right font-medium">{{ movement[key] || '—' }}</span>
           </div>
         </section>
-        <section v-if="canEdit" class="movement-detail-actions grid gap-3 border-t border-slate-200 pt-4" :class="{ 'grid-cols-2': session.isAdmin }">
+        <section v-if="canEdit" class="movement-detail-actions grid grid-cols-2 gap-3 border-t border-slate-200 pt-4">
           <RouterLink class="movement-detail-actions__link" :to="`/movimenti/${movement.id}/modifica`">
             <PButton label="Modifica" icon="pi pi-pencil" class="movement-detail-action movement-detail-action--edit" fluid />
           </RouterLink>
-          <PButton v-if="session.isAdmin" label="Elimina" icon="pi pi-trash" class="movement-detail-action movement-detail-action--delete" fluid @click="remove" />
+          <PButton label="Elimina" icon="pi pi-trash" class="movement-detail-action movement-detail-action--delete" fluid @click="remove" />
         </section>
       </template>
     </PCard>

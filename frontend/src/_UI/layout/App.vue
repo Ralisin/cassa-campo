@@ -1,12 +1,16 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRegisterSW } from 'virtual:pwa-register/vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { api } from '@/api'
 import { usePolling } from '@/composables/usePolling'
+import { useOfflineQueue } from '@/offlineQueue'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
+const offlineQueue = useOfflineQueue()
+const { needRefresh, updateServiceWorker } = useRegisterSW()
 const route = useRoute()
 const router = useRouter()
 const userMenu = ref()
@@ -18,6 +22,7 @@ const pendingReimbursementCount = ref(0)
 const installDialogVisible = ref(false)
 const installPrompt = ref(null)
 const installPromptPending = ref(false)
+const online = ref(navigator.onLine)
 const installDismissedKey = 'install_prompt_dismissed_at'
 const installDismissalDuration = 7 * 24 * 60 * 60 * 1000
 let installDialogTimer
@@ -64,6 +69,13 @@ const reimbursementCountLabel = computed(() => (
 ))
 const installButtonLabel = computed(() => isIos ? 'Ho capito' : 'Installa ora')
 const installButtonIcon = computed(() => isIos ? 'pi pi-check' : 'pi pi-download')
+const offlineQueueLabel = computed(() => {
+  if (!offlineQueue.pendingCount.value) return ''
+  const label = offlineQueue.pendingCount.value === 1 ? 'movimento in attesa' : 'movimenti in attesa'
+  if (!online.value) return `${offlineQueue.pendingCount.value} ${label} · offline`
+  if (offlineQueue.syncing.value) return `Sincronizzazione di ${offlineQueue.pendingCount.value} ${label}`
+  return `${offlineQueue.pendingCount.value} ${label} da sincronizzare`
+})
 
 function canShowInstallDialog() {
   if (isInstalled()) return false
@@ -156,6 +168,24 @@ async function loadReimbursementCount() {
   pendingReimbursementCount.value = result.pending_count
 }
 
+async function syncOfflineQueue() {
+  if (!session.authenticated || route.path === '/login') return
+  await offlineQueue.syncQueuedMovements(session.user?.id).catch(() => {})
+}
+
+function handleOnline() {
+  online.value = true
+  syncOfflineQueue()
+}
+
+function handleOffline() {
+  online.value = false
+}
+
+async function updateApp() {
+  await updateServiceWorker(true)
+}
+
 async function toggleNotifications(event) {
   notificationsPopover.value.toggle(event)
   await loadNotifications()
@@ -194,6 +224,8 @@ watch(
 onMounted(async () => {
   window.addEventListener('beforeinstallprompt', captureInstallPrompt)
   window.addEventListener('appinstalled', handleAppInstalled)
+  window.addEventListener('online', handleOnline)
+  window.addEventListener('offline', handleOffline)
   if (isIos) scheduleInstallDialog()
 
   if (session.authenticated && !session.user) {
@@ -202,6 +234,8 @@ onMounted(async () => {
       router.push('/login')
     })
   }
+  await offlineQueue.refreshPendingCount().catch(() => {})
+  await syncOfflineQueue()
   await loadNotifications().catch(() => {})
   await loadReimbursementCount().catch(() => {})
 })
@@ -209,9 +243,12 @@ onBeforeUnmount(() => {
   window.clearTimeout(installDialogTimer)
   window.removeEventListener('beforeinstallprompt', captureInstallPrompt)
   window.removeEventListener('appinstalled', handleAppInstalled)
+  window.removeEventListener('online', handleOnline)
+  window.removeEventListener('offline', handleOffline)
 })
 usePolling(loadNotifications, 15000)
 usePolling(loadReimbursementCount, 7000)
+usePolling(syncOfflineQueue, 20000)
 </script>
 
 <template>
@@ -297,6 +334,48 @@ usePolling(loadReimbursementCount, 7000)
     </PToolbar>
 
     <div class="menu-page-shell px-4 py-5">
+      <div v-if="needRefresh" class="app-update-banner">
+        <span class="app-update-banner__icon">
+          <i class="pi pi-download" />
+        </span>
+        <span class="min-w-0 flex-1">
+          <strong>Nuova versione disponibile</strong>
+          <small>Aggiorna ora per usare l'ultima versione dell'app.</small>
+        </span>
+        <PButton
+          label="Aggiorna"
+          icon="pi pi-refresh"
+          size="small"
+          class="app-update-banner__button"
+          @click="updateApp"
+        />
+      </div>
+      <div
+        v-if="offlineQueue.pendingCount.value || !online"
+        class="offline-sync-banner"
+        :class="{ 'offline-sync-banner--offline': !online }"
+      >
+        <span class="offline-sync-banner__icon">
+          <i :class="online ? 'pi pi-cloud-upload' : 'pi pi-wifi'" />
+        </span>
+        <span class="min-w-0 flex-1">
+          <strong>{{ online ? 'Coda offline' : 'Connessione assente' }}</strong>
+          <small>{{ offlineQueueLabel || 'I nuovi movimenti verranno salvati sul dispositivo.' }}</small>
+          <small v-if="offlineQueue.lastSyncError.value" class="offline-sync-banner__error">
+            {{ offlineQueue.lastSyncError.value }}
+          </small>
+        </span>
+        <PButton
+          v-if="online && offlineQueue.pendingCount.value"
+          icon="pi pi-refresh"
+          rounded
+          text
+          :loading="offlineQueue.syncing.value"
+          aria-label="Sincronizza movimenti offline"
+          class="offline-sync-banner__button"
+          @click="syncOfflineQueue"
+        />
+      </div>
       <RouterView v-slot="{ Component, route: currentRoute }">
         <Transition :name="pageTransitionName" mode="out-in">
           <component :is="Component" :key="currentRoute.fullPath" />

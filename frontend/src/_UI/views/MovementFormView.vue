@@ -3,6 +3,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { api, uploadReceipt } from '@/api'
+import { queueMovement } from '@/offlineQueue'
 import { useSessionStore } from '@/stores/session'
 
 const route = useRoute()
@@ -12,6 +13,7 @@ const editing = computed(() => typeof route.params.id === 'string')
 const unitReadOnly = computed(() => !session.isOperator)
 const saving = ref(false)
 const error = ref('')
+const offlineNotice = ref('')
 const submitted = ref(false)
 const receiptInput = ref(null)
 const receiptCameraInput = ref(null)
@@ -119,14 +121,28 @@ onMounted(async () => {
 async function submit() {
   submitted.value = true
   error.value = ''
+  offlineNotice.value = ''
   if (amountInvalid.value || supplierInvalid.value || dateInvalid.value || notesInvalid.value || categoryInvalid.value) {
     return
   }
   saving.value = true
+  const payload = { ...form }
   try {
-    const saved = editing.value
-      ? await api.put(`/movements/${route.params.id}`, form)
-      : await api.post('/movements', form)
+    let saved
+    try {
+      saved = editing.value
+        ? await api.put(`/movements/${route.params.id}`, payload)
+        : await api.post('/movements', payload)
+    } catch (cause) {
+      const canQueue = !editing.value && (!navigator.onLine || cause instanceof TypeError)
+      if (!canQueue) throw cause
+
+      await queueMovement(payload, selectedReceipts.value, session.user?.id)
+      offlineNotice.value = 'Movimento salvato sul dispositivo. Verrà sincronizzato appena torna la connessione.'
+      window.setTimeout(() => router.push('/movimenti'), 900)
+      return
+    }
+
     for (const file of selectedReceipts.value) {
       await uploadReceipt(saved.id, file)
     }
@@ -274,6 +290,7 @@ function formatBytes(bytes) {
               <p class="text-right text-[11px] font-bold text-slate-500">Totale {{ formatBytes(receiptSummary) }}</p>
             </div>
           </section>
+          <PMessage v-if="offlineNotice" severity="success" size="small">{{ offlineNotice }}</PMessage>
           <PMessage v-if="error" severity="error" size="small">{{ error }}</PMessage>
           <div class="movement-form-actions">
             <PButton type="submit" label="Salva movimento" icon="pi pi-check-circle" size="large" :loading="saving" fluid raised class="primary-cta" />

@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [
     vue(),
     VitePWA({
-      registerType: 'autoUpdate',
+      registerType: 'prompt',
       includeAssets: ['favicon-32x32.png', 'apple-touch-icon.png', 'icon.svg'],
       manifest: {
         name: 'Cassa Campo',

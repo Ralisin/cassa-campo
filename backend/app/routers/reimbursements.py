@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.dependencies import CurrentUser, DbSession, OperatorUser
 from app.models import Movement, MovementReimbursement, UserRole
@@ -21,6 +21,7 @@ def reimbursement_load_options():
     return (
         joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
         joinedload(Movement.creator),
+        selectinload(Movement.receipts),
     )
 
 

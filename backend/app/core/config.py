@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 720
     cors_origins: str = "http://localhost:5173"
+    supabase_url: str | None = None
+    supabase_secret_key: str | None = None
+    supabase_storage_bucket: str = "receipts"
+    max_receipt_size_mb: int = 10
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -24,4 +28,3 @@ def get_settings() -> Settings:
 
 
 settings = get_settings()
-

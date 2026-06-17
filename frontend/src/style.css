@@ -2212,6 +2212,62 @@
   font-weight: 600;
 }
 
+.receipt-upload-panel {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid #dce7e1;
+  border-radius: 0.9rem;
+  background: #f8fafc;
+}
+
+.receipt-upload-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.receipt-upload-panel__actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.receipt-upload-panel__button.p-button {
+  flex: 0 0 auto;
+  width: 2.5rem;
+  height: 2.5rem;
+  background: #12372a !important;
+  border-color: #12372a !important;
+}
+
+.receipt-upload-panel__button--secondary.p-button {
+  background: #eef4f0 !important;
+  border-color: #dce7e1 !important;
+  color: #12372a !important;
+}
+
+.receipt-upload-panel__list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.receipt-upload-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.7rem;
+  background: white;
+}
+
+.movement-detail-receipts {
+  margin-top: 0.25rem;
+}
+
 @media (min-width: 640px) {
   .movement-form-card .p-card-body {
     padding: 1.5rem;

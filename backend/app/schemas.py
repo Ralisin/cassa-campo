@@ -74,6 +74,16 @@ class MovementInput(BaseModel):
         return self
 
 
+class MovementReceiptRead(ApiModel):
+    id: uuid.UUID
+    movement_id: uuid.UUID
+    filename: str
+    content_type: str
+    size_bytes: int
+    created_at: datetime
+    uploaded_by: uuid.UUID
+
+
 class MovementRead(ApiModel):
     id: uuid.UUID
     created_at: datetime
@@ -93,6 +103,7 @@ class MovementRead(ApiModel):
     reimbursement_status: str | None
     reimbursed_at: datetime | None
     reimbursed_by_name: str | None
+    receipts: list[MovementReceiptRead] = Field(default_factory=list)
 
 
 class MovementCreatorRead(BaseModel):

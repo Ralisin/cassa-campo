@@ -7,11 +7,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import and_, func, or_, select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from app.dependencies import CurrentUser, DbSession, can_edit_movement
 from app.models import Movement, MovementReimbursement, MovementType, PaymentMethod, User
 from app.notification_service import notify_admins_of_movement
+from app.receipt_storage import get_receipt_storage
 from app.schemas import MovementCreatorRead, MovementInput, MovementPage, MovementRead
 from app.services import apply_movement_input, enforce_user_branch, movement_to_read
 
@@ -43,6 +44,7 @@ def get_movement_or_404(db: DbSession, movement_id: uuid.UUID) -> Movement:
         .options(
             joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
             joinedload(Movement.creator),
+            selectinload(Movement.receipts),
         )
         .where(Movement.id == movement_id)
     )
@@ -96,6 +98,7 @@ def list_movements(
         .options(
             joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
             joinedload(Movement.creator),
+            selectinload(Movement.receipts),
         )
         .where(*filters)
     )
@@ -188,6 +191,10 @@ def delete_movement(
     movement = get_movement_or_404(db, movement_id)
     if not can_edit_movement(user, movement.created_by):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    if movement.receipts:
+        storage = get_receipt_storage()
+        for receipt in movement.receipts:
+            storage.delete(receipt.storage_key)
     db.delete(movement)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

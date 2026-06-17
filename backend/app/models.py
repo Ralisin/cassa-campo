@@ -130,6 +130,29 @@ class Movement(Base):
     notifications: Mapped[list["Notification"]] = relationship(
         back_populates="movement", cascade="all, delete-orphan"
     )
+    receipts: Mapped[list["MovementReceipt"]] = relationship(
+        back_populates="movement",
+        cascade="all, delete-orphan",
+        order_by="MovementReceipt.created_at",
+    )
+
+
+class MovementReceipt(Base):
+    __tablename__ = "movement_receipts"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    movement_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("movements.id", ondelete="CASCADE"), index=True
+    )
+    uploaded_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    filename: Mapped[str] = mapped_column(String(255))
+    content_type: Mapped[str] = mapped_column(String(100))
+    size_bytes: Mapped[int]
+    storage_key: Mapped[str] = mapped_column(String(512), unique=True)
+
+    movement: Mapped[Movement] = relationship(back_populates="receipts")
+    uploader: Mapped[User] = relationship(foreign_keys=[uploaded_by])
 
 
 class MovementReimbursement(Base):

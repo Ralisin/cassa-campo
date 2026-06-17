@@ -8,6 +8,7 @@ from app.routers import (
     exports,
     movements,
     notifications,
+    receipts,
     reimbursements,
     settings as settings_router,
     transfers,
@@ -27,6 +28,7 @@ app.include_router(auth.router)
 app.include_router(dashboard.router)
 app.include_router(movements.router)
 app.include_router(notifications.router)
+app.include_router(receipts.router)
 app.include_router(settings_router.router)
 app.include_router(exports.router)
 app.include_router(users.router)

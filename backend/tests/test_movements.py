@@ -1,6 +1,7 @@
 import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -12,6 +13,7 @@ import pytest
 from app.core.database import Base
 from app.models import (
     Movement,
+    MovementReceipt,
     MovementReimbursement,
     MovementType,
     Notification,
@@ -20,6 +22,14 @@ from app.models import (
     UserRole,
 )
 from app.routers.movements import delete_movement, list_movements
+
+
+class FakeStorage:
+    def __init__(self) -> None:
+        self.deleted: list[str] = []
+
+    def delete(self, storage_key: str) -> None:
+        self.deleted.append(storage_key)
 
 
 def make_user(name: str) -> User:
@@ -128,6 +138,41 @@ def test_user_can_delete_own_movement_and_related_notifications() -> None:
         assert response.status_code == 204
         assert db.get(Movement, movement_id) is None
         assert db.get(Notification, notification_id) is None
+
+
+def test_deleting_movement_deletes_related_receipt_object() -> None:
+    engine = create_engine(
+        "sqlite://",
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+    )
+    Base.metadata.create_all(engine)
+
+    with Session(engine) as db:
+        owner = make_user("Alice")
+        movement = make_movement(owner, "Supermercato", date.today(), datetime.now())
+        receipt = MovementReceipt(
+            id=uuid.uuid4(),
+            movement=movement,
+            uploaded_by=owner.id,
+            filename="scontrino.pdf",
+            content_type="application/pdf",
+            size_bytes=128,
+            storage_key="movements/movement-id/scontrino.pdf",
+        )
+        storage = FakeStorage()
+        db.add_all([owner, movement, receipt])
+        db.commit()
+        movement_id = movement.id
+        receipt_id = receipt.id
+
+        with patch("app.routers.movements.get_receipt_storage", return_value=storage):
+            response = delete_movement(movement_id, db, owner)
+
+        assert response.status_code == 204
+        assert storage.deleted == ["movements/movement-id/scontrino.pdf"]
+        assert db.get(Movement, movement_id) is None
+        assert db.get(MovementReceipt, receipt_id) is None
 
 
 def test_user_cannot_delete_another_users_movement() -> None:

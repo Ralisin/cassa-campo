@@ -2,7 +2,7 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
-import { api } from '@/api'
+import { api, uploadReceipt } from '@/api'
 import { useSessionStore } from '@/stores/session'
 
 const route = useRoute()
@@ -13,6 +13,9 @@ const unitReadOnly = computed(() => !session.isOperator)
 const saving = ref(false)
 const error = ref('')
 const submitted = ref(false)
+const receiptInput = ref(null)
+const receiptCameraInput = ref(null)
+const selectedReceipts = ref([])
 const units = ['L/C', 'E/G', 'R/S', 'CoCa', 'Gruppo']
 const balanceTypes = [
   { label: 'Campo', value: 'C' },
@@ -63,6 +66,7 @@ const supplierInvalid = computed(() => submitted.value && !form.supplier.trim())
 const dateInvalid = computed(() => submitted.value && !form.operation_date)
 const notesInvalid = computed(() => submitted.value && !form.notes?.trim())
 const categoryInvalid = computed(() => submitted.value && form.type === 'uscita' && !form.category)
+const receiptSummary = computed(() => selectedReceipts.value.reduce((sum, file) => sum + file.size, 0))
 
 watch(
   () => form.needs_reimbursement,
@@ -120,14 +124,33 @@ async function submit() {
   }
   saving.value = true
   try {
-    if (editing.value) await api.put(`/movements/${route.params.id}`, form)
-    else await api.post('/movements', form)
-    router.push('/movimenti')
+    const saved = editing.value
+      ? await api.put(`/movements/${route.params.id}`, form)
+      : await api.post('/movements', form)
+    for (const file of selectedReceipts.value) {
+      await uploadReceipt(saved.id, file)
+    }
+    router.push(selectedReceipts.value.length ? `/movimenti/${saved.id}` : '/movimenti')
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Salvataggio non riuscito'
   } finally {
     saving.value = false
   }
+}
+
+function selectReceipts(event) {
+  const files = Array.from(event.target.files ?? [])
+  selectedReceipts.value = [...selectedReceipts.value, ...files]
+  event.target.value = ''
+}
+
+function removeReceipt(index) {
+  selectedReceipts.value = selectedReceipts.value.filter((_, itemIndex) => itemIndex !== index)
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`
 }
 </script>
 
@@ -208,6 +231,49 @@ async function submit() {
             </span>
             <PToggleSwitch v-model="form.needs_reimbursement" input-id="reimbursement" />
           </label>
+
+          <section class="receipt-upload-panel">
+            <input
+              ref="receiptInput"
+              type="file"
+              accept="image/jpeg,image/png,application/pdf"
+              multiple
+              class="hidden"
+              @change="selectReceipts"
+            >
+            <input
+              ref="receiptCameraInput"
+              type="file"
+              accept="image/*"
+              capture="environment"
+              class="hidden"
+              @change="selectReceipts"
+            >
+            <div class="receipt-upload-panel__header">
+              <PAvatar icon="pi pi-paperclip" shape="circle" class="!bg-emerald-50 !text-forest" />
+              <div class="min-w-0 flex-1">
+                <strong class="block text-sm text-forest">Scontrini</strong>
+                <span class="block text-xs font-normal leading-relaxed text-slate-600">
+                  Scatta una foto o allega PDF, PNG e JPEG.
+                </span>
+              </div>
+              <div class="receipt-upload-panel__actions">
+                <PButton type="button" icon="pi pi-camera" rounded aria-label="Scatta foto scontrino" class="receipt-upload-panel__button" @click="receiptCameraInput?.click()" />
+                <PButton type="button" icon="pi pi-plus" rounded aria-label="Aggiungi file scontrino" class="receipt-upload-panel__button receipt-upload-panel__button--secondary" @click="receiptInput?.click()" />
+              </div>
+            </div>
+            <div v-if="selectedReceipts.length" class="receipt-upload-panel__list">
+              <div v-for="(file, index) in selectedReceipts" :key="`${file.name}-${file.size}-${index}`" class="receipt-upload-item">
+                <i :class="file.type === 'application/pdf' ? 'pi pi-file-pdf' : 'pi pi-image'" class="text-slate-500" />
+                <span class="min-w-0 flex-1">
+                  <strong class="block truncate text-xs text-slate-800">{{ file.name }}</strong>
+                  <span class="block text-[11px] font-semibold text-slate-500">{{ formatBytes(file.size) }}</span>
+                </span>
+                <PButton type="button" icon="pi pi-times" text rounded severity="secondary" aria-label="Rimuovi scontrino" class="!h-8 !w-8" @click="removeReceipt(index)" />
+              </div>
+              <p class="text-right text-[11px] font-bold text-slate-500">Totale {{ formatBytes(receiptSummary) }}</p>
+            </div>
+          </section>
           <PMessage v-if="error" severity="error" size="small">{{ error }}</PMessage>
           <div class="movement-form-actions">
             <PButton type="submit" label="Salva movimento" icon="pi pi-check-circle" size="large" :loading="saving" fluid raised class="primary-cta" />

@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import selectinload
 
 from app.models import (
     CampCategoryBudget,
@@ -18,7 +19,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.schemas import CategorySummary, DashboardRead, MovementInput, MovementRead
+from app.schemas import CategorySummary, DashboardRead, MovementInput, MovementRead, MovementReceiptRead
 
 ZERO = Decimal("0.00")
 CAMP_TIMEZONE = ZoneInfo("Europe/Rome")
@@ -57,6 +58,7 @@ def movement_to_read(movement: Movement) -> MovementRead:
             if reimbursement and reimbursement.reimbursed_by_user
             else None
         ),
+        receipts=[MovementReceiptRead.model_validate(receipt) for receipt in movement.receipts],
     )
 
 
@@ -132,6 +134,7 @@ def get_dashboard(db: Session) -> DashboardRead:
         .options(
             joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
             joinedload(Movement.creator),
+            selectinload(Movement.receipts),
         )
         .where(Movement.operation_date == camp_today())
         .order_by(Movement.created_at.desc())

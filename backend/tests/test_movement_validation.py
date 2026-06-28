@@ -4,9 +4,8 @@ from decimal import Decimal
 import pytest
 from pydantic import ValidationError
 
-from app.models import Branch, MovementType, PaymentMethod, User, UserRole
+from app.models import Branch, MovementType, PaymentMethod
 from app.schemas import MovementInput
-from app.services import enforce_user_branch
 
 
 def test_movement_notes_are_required() -> None:
@@ -20,19 +19,6 @@ def test_movement_notes_are_required() -> None:
             amount=Decimal("10.00"),
             notes="",
         )
-
-
-def movement_input(unit: Branch = Branch.GRUPPO) -> MovementInput:
-    return MovementInput(
-        operation_date=date.today(),
-        type=MovementType.EXPENSE,
-        payment_method=PaymentMethod.CASH,
-        supplier="Fornitore",
-        unit=unit,
-        category="varie",
-        amount=Decimal("10.00"),
-        notes="Spesa",
-    )
 
 
 def test_expense_category_is_required() -> None:
@@ -59,50 +45,32 @@ def test_income_does_not_keep_an_expense_category() -> None:
         amount=Decimal("10.00"),
         notes="Entrata",
     )
-
     assert data.category is None
 
 
-def test_user_movement_is_forced_to_profile_branch() -> None:
-    data = movement_input()
-    user = User(
-        email="utente@example.it",
-        name="Utente",
-        password_hash="unused",
-        role=UserRole.USER,
-        branch=Branch.ESPLORATORI_GUIDE.value,
+def test_reimbursement_requires_cash_expense() -> None:
+    with pytest.raises(ValidationError):
+        MovementInput(
+            operation_date=date.today(),
+            type=MovementType.EXPENSE,
+            payment_method=PaymentMethod.CARD,
+            supplier="Fornitore",
+            category="varie",
+            amount=Decimal("10.00"),
+            notes="Spesa",
+            needs_reimbursement=True,
+        )
+
+
+def test_unit_is_optional_now_forced_by_cassa() -> None:
+    # The unit is no longer chosen by the client; it may be omitted entirely.
+    data = MovementInput(
+        operation_date=date.today(),
+        type=MovementType.EXPENSE,
+        payment_method=PaymentMethod.CASH,
+        supplier="Fornitore",
+        category="varie",
+        amount=Decimal("10.00"),
+        notes="Spesa",
     )
-
-    enforce_user_branch(data, user)
-
-    assert data.unit == Branch.ESPLORATORI_GUIDE
-
-
-def test_admin_can_choose_movement_branch() -> None:
-    data = movement_input()
-    admin = User(
-        email="admin@example.it",
-        name="Admin",
-        password_hash="unused",
-        role=UserRole.ADMIN,
-        branch=Branch.ESPLORATORI_GUIDE.value,
-    )
-
-    enforce_user_branch(data, admin)
-
-    assert data.unit == Branch.GRUPPO
-
-
-def test_cashier_can_choose_movement_branch() -> None:
-    data = movement_input()
-    cashier = User(
-        email="cassiere@example.it",
-        name="Cassiere",
-        password_hash="unused",
-        role=UserRole.CASHIER,
-        branch=Branch.ESPLORATORI_GUIDE.value,
-    )
-
-    enforce_user_branch(data, cashier)
-
-    assert data.unit == Branch.GRUPPO
+    assert data.unit is None

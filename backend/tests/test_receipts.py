@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
@@ -5,12 +6,8 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
 
-from app.core.database import Base
-from app.models import Branch, Movement, MovementType, PaymentMethod, User, UserRole
+from app.models import Cassa, Movement, MovementType, PaymentMethod, User, UserRole
 from app.receipt_storage import ReceiptStorage
 from app.routers.receipts import delete_receipt, download_receipt, upload_receipt
 
@@ -40,44 +37,6 @@ class FakeStorage:
         self.deleted.append(storage_key)
 
 
-@pytest.fixture
-def db() -> Session:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    Base.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
-
-
-def make_user(name: str, role: UserRole = UserRole.USER) -> User:
-    return User(
-        id=uuid.uuid4(),
-        email=f"{name.lower()}@example.it",
-        name=name,
-        password_hash="unused",
-        role=role,
-        branch=Branch.ESPLORATORI_GUIDE.value,
-    )
-
-
-def make_movement(user: User) -> Movement:
-    return Movement(
-        id=uuid.uuid4(),
-        operation_date=date.today(),
-        created_at=datetime.now(),
-        type=MovementType.EXPENSE,
-        payment_method=PaymentMethod.CASH,
-        supplier="Supermercato",
-        unit=Branch.ESPLORATORI_GUIDE.value,
-        amount=Decimal("10.00"),
-        notes="Spesa campo",
-        created_by=user.id,
-    )
-
-
 class FakeResponse:
     def __enter__(self) -> "FakeResponse":
         return self
@@ -89,23 +48,42 @@ class FakeResponse:
         return b"{}"
 
 
-@pytest.mark.anyio
-async def test_user_can_upload_download_and_delete_own_receipt(db: Session) -> None:
-    user = make_user("Alice")
-    movement = make_movement(user)
-    storage = FakeStorage()
-    db.add_all([user, movement])
-    db.commit()
-
-    receipt = await upload_receipt(
-        movement.id,
-        db,
-        user,
-        storage,
-        FakeUploadFile(b"receipt-content", "Scontrino spesa.pdf"),
+def make_movement(cassa: Cassa, user: User) -> Movement:
+    return Movement(
+        id=uuid.uuid4(),
+        cassa_id=cassa.id,
+        operation_date=date.today(),
+        created_at=datetime.now(),
+        type=MovementType.EXPENSE,
+        payment_method=PaymentMethod.CASH,
+        supplier="Supermercato",
+        unit=cassa.unit,
+        category="vitto",
+        amount=Decimal("10.00"),
+        notes="Spesa campo",
+        created_by=user.id,
     )
-    download = download_receipt(movement.id, receipt.id, db, user, storage)
-    delete_receipt(movement.id, receipt.id, db, user, storage)
+
+
+def test_user_can_upload_download_and_delete_own_receipt(
+    db, make_group, make_cassa, make_user, membership_of
+) -> None:
+    group = make_group()
+    cassa = make_cassa(group, "E/G")
+    alice = make_user(group, "alice@roma108.it", memberships=[(cassa, UserRole.USER)])
+    movement = make_movement(cassa, alice)
+    storage = FakeStorage()
+    db.add(movement)
+    db.flush()
+    membership = membership_of(alice, cassa)
+
+    receipt = asyncio.run(
+        upload_receipt(
+            movement.id, db, membership, storage, FakeUploadFile(b"receipt-content", "Scontrino spesa.pdf")
+        )
+    )
+    download = download_receipt(movement.id, receipt.id, db, cassa, storage)
+    delete_receipt(movement.id, receipt.id, db, membership, storage)
 
     assert receipt.filename == "Scontrino-spesa.pdf"
     assert receipt.size_bytes == len(b"receipt-content")
@@ -114,22 +92,23 @@ async def test_user_can_upload_download_and_delete_own_receipt(db: Session) -> N
     assert storage.deleted == [storage.uploads[0][0]]
 
 
-@pytest.mark.anyio
-async def test_user_cannot_upload_receipt_to_another_users_movement(db: Session) -> None:
-    owner = make_user("Alice")
-    other_user = make_user("Bob")
-    movement = make_movement(owner)
+def test_user_cannot_upload_receipt_to_another_users_movement(
+    db, make_group, make_cassa, make_user, membership_of
+) -> None:
+    group = make_group()
+    cassa = make_cassa(group, "E/G")
+    owner = make_user(group, "alice@roma108.it", memberships=[(cassa, UserRole.USER)])
+    other = make_user(group, "bob@roma108.it", memberships=[(cassa, UserRole.USER)])
+    movement = make_movement(cassa, owner)
     storage = FakeStorage()
-    db.add_all([owner, other_user, movement])
-    db.commit()
+    db.add(movement)
+    db.flush()
 
     with pytest.raises(HTTPException) as error:
-        await upload_receipt(
-            movement.id,
-            db,
-            other_user,
-            storage,
-            FakeUploadFile(b"receipt-content"),
+        asyncio.run(
+            upload_receipt(
+                movement.id, db, membership_of(other, cassa), storage, FakeUploadFile(b"receipt-content")
+            )
         )
 
     assert error.value.status_code == 403

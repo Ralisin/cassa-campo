@@ -13,28 +13,11 @@ TEST_URL = "postgresql+psycopg://cassa_campo:cassa_campo@localhost:5432/cassa_ca
 os.environ["DATABASE_URL"] = TEST_URL
 
 import pytest  # noqa: E402
-from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy import create_engine, select, text  # noqa: E402
 from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.security import hash_password  # noqa: E402
 from app.models import Cassa, Group, Membership, User, UserRole  # noqa: E402
-
-# Legacy unit tests written before the multi-tenant refactor still build
-# User(role=, branch=) and call router functions with the old signatures.
-# They are excluded from collection until ported (FASE 2b).
-collect_ignore = [
-    "test_dashboard.py",
-    "test_exports.py",
-    "test_movement_validation.py",
-    "test_movements.py",
-    "test_notifications.py",
-    "test_permissions.py",
-    "test_receipts.py",
-    "test_reimbursements.py",
-    "test_settings.py",
-    "test_transfers.py",
-    "test_users.py",
-]
 
 
 @pytest.fixture(scope="session")
@@ -130,6 +113,18 @@ def make_user(db):
         return user
 
     return _make
+
+
+@pytest.fixture
+def membership_of(db):
+    def _get(user: User, cassa: Cassa) -> Membership:
+        return db.scalar(
+            select(Membership).where(
+                Membership.user_id == user.id, Membership.cassa_id == cassa.id
+            )
+        )
+
+    return _get
 
 
 @pytest.fixture

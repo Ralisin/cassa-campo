@@ -1,13 +1,7 @@
-import uuid
 from datetime import date
 from decimal import Decimal
 
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
-
-from app.core.database import Base
-from app.models import Branch, MovementType, PaymentMethod, User, UserRole
+from app.models import MovementType, PaymentMethod, UserRole
 from app.routers.movements import create_movement
 from app.routers.notifications import (
     list_notifications,
@@ -18,96 +12,71 @@ from app.routers.reimbursements import update_reimbursement
 from app.schemas import MovementInput, ReimbursementUpdate
 
 
-def make_user(
-    email: str,
-    role: UserRole,
-    branch: Branch = Branch.ESPLORATORI_GUIDE,
-) -> User:
-    return User(
-        id=uuid.uuid4(),
-        email=email,
-        name=email.split("@")[0],
-        password_hash="unused",
-        role=role,
-        branch=branch.value,
+def test_reimbursement_notifications_reach_admin_cashier_and_requesting_user(
+    db, make_group, make_cassa, make_user, membership_of
+) -> None:
+    group = make_group()
+    eg = make_cassa(group, "E/G")
+    rs = make_cassa(group, "R/S")
+    admin = make_user(group, "admin@roma108.it", memberships=[(eg, UserRole.ADMIN)])
+    cashier = make_user(group, "cashier@roma108.it", memberships=[(eg, UserRole.CASHIER)])
+    other_cashier = make_user(group, "altro@roma108.it", memberships=[(rs, UserRole.CASHIER)])
+    user = make_user(group, "user@roma108.it", memberships=[(eg, UserRole.USER)])
+
+    admin_eg = membership_of(admin, eg)
+    cashier_eg = membership_of(cashier, eg)
+    other_rs = membership_of(other_cashier, rs)
+    user_eg = membership_of(user, eg)
+
+    movement = create_movement(
+        MovementInput(
+            operation_date=date.today(),
+            type=MovementType.EXPENSE,
+            payment_method=PaymentMethod.CASH,
+            supplier="Supermercato",
+            category="vitto",
+            amount=Decimal("24.50"),
+            notes="Spesa cambusa",
+            needs_reimbursement=True,
+        ),
+        db,
+        user_eg,
     )
 
+    admin_notifications = list_notifications(db, admin_eg)
+    assert admin_notifications.unread_count == 1
+    assert admin_notifications.items[0].kind == "reimbursement_requested"
+    assert list_notifications(db, cashier_eg).unread_count == 1
+    # a cashier of a different cassa is not notified
+    assert list_notifications(db, other_rs).unread_count == 0
 
-def test_reimbursement_notifications_reach_admin_and_requesting_user() -> None:
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
+    mark_notification_read(admin_notifications.items[0].id, db, admin)
+    assert list_notifications(db, admin_eg).unread_count == 0
+
+    create_movement(
+        MovementInput(
+            operation_date=date.today(),
+            type=MovementType.INCOME,
+            payment_method=PaymentMethod.CASH,
+            supplier="Quota partecipante",
+            amount=Decimal("10.00"),
+            notes="Quota",
+        ),
+        db,
+        user_eg,
     )
-    Base.metadata.create_all(engine)
+    admin_notifications = list_notifications(db, admin_eg)
+    assert admin_notifications.unread_count == 1
+    unread = next(item for item in admin_notifications.items if item.read_at is None)
+    assert unread.kind == "movement_created"
+    assert list_notifications(db, cashier_eg).unread_count == 1
+    mark_all_notifications_read(db, admin_eg)
 
-    with Session(engine) as db:
-        admin = make_user("admin@example.it", UserRole.ADMIN)
-        cashier = make_user("cashier@example.it", UserRole.CASHIER)
-        other_cashier = make_user(
-            "other-cashier@example.it",
-            UserRole.CASHIER,
-            Branch.ROVER_SCOLTE,
-        )
-        user = make_user("user@example.it", UserRole.USER)
-        db.add_all([admin, cashier, other_cashier, user])
-        db.commit()
+    update_reimbursement(movement.id, ReimbursementUpdate(reimbursed=True), db, admin_eg)
+    user_notifications = list_notifications(db, user_eg)
+    assert user_notifications.unread_count == 1
+    assert user_notifications.items[0].kind == "reimbursement_completed"
+    assert "24,50" in user_notifications.items[0].message
 
-        movement = create_movement(
-            MovementInput(
-                operation_date=date.today(),
-                type=MovementType.EXPENSE,
-                payment_method=PaymentMethod.CASH,
-                supplier="Supermercato",
-                unit=Branch.ESPLORATORI_GUIDE,
-                category="vitto",
-                amount=Decimal("24.50"),
-                notes="Spesa cambusa",
-                needs_reimbursement=True,
-            ),
-            db,
-            user,
-        )
-
-        admin_notifications = list_notifications(db, admin)
-        assert admin_notifications.unread_count == 1
-        assert admin_notifications.items[0].kind == "reimbursement_requested"
-        assert list_notifications(db, cashier).unread_count == 1
-        assert list_notifications(db, other_cashier).unread_count == 0
-
-        mark_notification_read(admin_notifications.items[0].id, db, admin)
-        assert list_notifications(db, admin).unread_count == 0
-
-        create_movement(
-            MovementInput(
-                operation_date=date.today(),
-                type=MovementType.INCOME,
-                payment_method=PaymentMethod.CASH,
-                supplier="Quota partecipante",
-                unit=Branch.ESPLORATORI_GUIDE,
-                amount=Decimal("10.00"),
-                notes="Quota",
-            ),
-            db,
-            user,
-        )
-        admin_notifications = list_notifications(db, admin)
-        assert admin_notifications.unread_count == 1
-        unread_notification = next(item for item in admin_notifications.items if item.read_at is None)
-        assert unread_notification.kind == "movement_created"
-        assert list_notifications(db, cashier).unread_count == 1
-        mark_all_notifications_read(db, admin)
-
-        update_reimbursement(
-            movement.id,
-            ReimbursementUpdate(reimbursed=True),
-            db,
-            admin,
-        )
-        user_notifications = list_notifications(db, user)
-        assert user_notifications.unread_count == 1
-        assert user_notifications.items[0].kind == "reimbursement_completed"
-        assert "24,50" in user_notifications.items[0].message
-
-        mark_all_notifications_read(db, user)
-        assert list_notifications(db, user).unread_count == 0
+    mark_all_notifications_read(db, user_eg)
+    assert list_notifications(db, user_eg).unread_count == 0

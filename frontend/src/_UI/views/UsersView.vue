@@ -33,6 +33,14 @@ const emailInvalid = computed(() => submitted.value && !form.email.trim())
 const passwordInvalid = computed(
   () => submitted.value && ((!editing.value || form.password) && form.password.length < 8),
 )
+const sortedUsers = computed(() =>
+  [...users.value].sort((a, b) => {
+    const selfId = session.user?.id
+    if (a.id === selfId) return -1
+    if (b.id === selfId) return 1
+    return a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
+  }),
+)
 const membershipsInvalid = computed(() => {
   if (!submitted.value) return false
   if (!form.memberships.length) return true
@@ -140,7 +148,7 @@ onMounted(loadUsers)
       </template>
     </PCard>
 
-    <PDataView :value="users" class="movement-data-view">
+    <PDataView :value="sortedUsers" class="movement-data-view">
       <template #list="{ items }">
         <div class="space-y-2">
           <PCard v-for="user in items" :key="user.id" class="user-list-card cursor-pointer" @click="openEdit(user)">

@@ -5,8 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select, update
 
-from app.dependencies import CurrentUser, DbSession
-from app.models import Notification
+from app.dependencies import CurrentMembership, CurrentUser, DbSession
+from app.models import Movement, Notification
 from app.schemas import NotificationList, NotificationRead
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -15,18 +15,25 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 @router.get("", response_model=NotificationList)
 def list_notifications(
     db: DbSession,
-    user: CurrentUser,
+    membership: CurrentMembership,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
 ) -> NotificationList:
+    cassa_ids = (
+        select(Movement.id).where(Movement.cassa_id == membership.cassa_id).scalar_subquery()
+    )
     items = db.scalars(
         select(Notification)
-        .where(Notification.user_id == user.id)
+        .where(
+            Notification.user_id == membership.user_id,
+            Notification.movement_id.in_(cassa_ids),
+        )
         .order_by(Notification.created_at.desc(), Notification.id.desc())
         .limit(limit)
     ).all()
     unread_count = db.scalar(
         select(func.count(Notification.id)).where(
-            Notification.user_id == user.id,
+            Notification.user_id == membership.user_id,
+            Notification.movement_id.in_(cassa_ids),
             Notification.read_at.is_(None),
         )
     ) or 0
@@ -34,10 +41,17 @@ def list_notifications(
 
 
 @router.put("/read-all", status_code=status.HTTP_204_NO_CONTENT)
-def mark_all_notifications_read(db: DbSession, user: CurrentUser) -> Response:
+def mark_all_notifications_read(db: DbSession, membership: CurrentMembership) -> Response:
+    cassa_ids = (
+        select(Movement.id).where(Movement.cassa_id == membership.cassa_id).scalar_subquery()
+    )
     db.execute(
         update(Notification)
-        .where(Notification.user_id == user.id, Notification.read_at.is_(None))
+        .where(
+            Notification.user_id == membership.user_id,
+            Notification.movement_id.in_(cassa_ids),
+            Notification.read_at.is_(None),
+        )
         .values(read_at=datetime.now(UTC))
     )
     db.commit()

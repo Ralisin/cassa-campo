@@ -4,19 +4,21 @@ from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
-from app.dependencies import CurrentUser, DbSession, OperatorUser
-from app.models import TransferType, TreasuryTransfer
+from app.dependencies import CurrentCassa, DbSession, OperatorMembership
+from app.models import Cassa, TransferType, TreasuryTransfer
 from app.schemas import TransferInput, TransferRead
 from app.services import get_dashboard
 
 router = APIRouter(prefix="/transfers", tags=["transfers"])
 
 
-def get_transfer_or_404(db: DbSession, transfer_id: uuid.UUID) -> TreasuryTransfer:
+def get_transfer_or_404(
+    db: DbSession, transfer_id: uuid.UUID, cassa_id: uuid.UUID
+) -> TreasuryTransfer:
     transfer = db.scalar(
         select(TreasuryTransfer)
         .options(joinedload(TreasuryTransfer.creator))
-        .where(TreasuryTransfer.id == transfer_id)
+        .where(TreasuryTransfer.id == transfer_id, TreasuryTransfer.cassa_id == cassa_id)
     )
     if not transfer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transfer not found")
@@ -37,9 +39,12 @@ def transfer_to_read(transfer: TreasuryTransfer) -> TransferRead:
 
 
 def validate_available_balance(
-    data: TransferInput, db: DbSession, existing: TreasuryTransfer | None = None
+    data: TransferInput,
+    db: DbSession,
+    cassa: Cassa,
+    existing: TreasuryTransfer | None = None,
 ) -> None:
-    dashboard = get_dashboard(db)
+    dashboard = get_dashboard(db, cassa.id)
     cash_balance = dashboard.cash_balance
     bank_balance = dashboard.bank_balance
     if existing:
@@ -67,42 +72,47 @@ def apply_transfer_input(transfer: TreasuryTransfer, data: TransferInput) -> Non
 
 
 @router.get("", response_model=list[TransferRead])
-def list_transfers(db: DbSession, _: CurrentUser) -> list[TransferRead]:
+def list_transfers(db: DbSession, cassa: CurrentCassa) -> list[TransferRead]:
     transfers = db.scalars(
         select(TreasuryTransfer)
         .options(joinedload(TreasuryTransfer.creator))
+        .where(TreasuryTransfer.cassa_id == cassa.id)
         .order_by(TreasuryTransfer.operation_date.desc(), TreasuryTransfer.created_at.desc())
     ).all()
     return [transfer_to_read(transfer) for transfer in transfers]
 
 
 @router.post("", response_model=TransferRead, status_code=status.HTTP_201_CREATED)
-def create_transfer(data: TransferInput, db: DbSession, operator: OperatorUser) -> TransferRead:
-    validate_available_balance(data, db)
-    transfer = TreasuryTransfer(
-        created_by=operator.id,
-    )
+def create_transfer(
+    data: TransferInput, db: DbSession, operator: OperatorMembership
+) -> TransferRead:
+    cassa = operator.cassa
+    validate_available_balance(data, db, cassa)
+    transfer = TreasuryTransfer(created_by=operator.user_id, cassa_id=cassa.id)
     apply_transfer_input(transfer, data)
     db.add(transfer)
     db.commit()
     db.refresh(transfer)
-    return transfer_to_read(get_transfer_or_404(db, transfer.id))
+    return transfer_to_read(get_transfer_or_404(db, transfer.id, cassa.id))
 
 
 @router.put("/{transfer_id}", response_model=TransferRead)
 def update_transfer(
-    transfer_id: uuid.UUID, data: TransferInput, db: DbSession, _: OperatorUser
+    transfer_id: uuid.UUID, data: TransferInput, db: DbSession, operator: OperatorMembership
 ) -> TransferRead:
-    transfer = get_transfer_or_404(db, transfer_id)
-    validate_available_balance(data, db, existing=transfer)
+    cassa = operator.cassa
+    transfer = get_transfer_or_404(db, transfer_id, cassa.id)
+    validate_available_balance(data, db, cassa, existing=transfer)
     apply_transfer_input(transfer, data)
     db.commit()
-    return transfer_to_read(get_transfer_or_404(db, transfer.id))
+    return transfer_to_read(get_transfer_or_404(db, transfer.id, cassa.id))
 
 
 @router.delete("/{transfer_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_transfer(transfer_id: uuid.UUID, db: DbSession, _: OperatorUser) -> Response:
-    transfer = get_transfer_or_404(db, transfer_id)
+def delete_transfer(
+    transfer_id: uuid.UUID, db: DbSession, operator: OperatorMembership
+) -> Response:
+    transfer = get_transfer_or_404(db, transfer_id, operator.cassa_id)
     db.delete(transfer)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

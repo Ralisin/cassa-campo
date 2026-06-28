@@ -1,20 +1,25 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.dependencies import CurrentUser, DbSession, OperatorUser
+from app.dependencies import CurrentCassa, DbSession, OperatorMembership
 from app.models import CampCategoryBudget, CampSettings, ExpenseCategory
 from app.schemas import SettingsInput, SettingsRead
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-def latest_settings(db: DbSession) -> CampSettings | None:
-    return db.scalar(select(CampSettings).order_by(CampSettings.created_at.desc()).limit(1))
+def latest_settings(db: DbSession, cassa_id) -> CampSettings | None:
+    return db.scalar(
+        select(CampSettings)
+        .where(CampSettings.cassa_id == cassa_id)
+        .order_by(CampSettings.created_at.desc())
+        .limit(1)
+    )
 
 
 @router.get("", response_model=SettingsRead)
-def get_settings(db: DbSession, _: CurrentUser) -> SettingsRead:
-    settings = latest_settings(db)
+def get_settings(db: DbSession, cassa: CurrentCassa) -> SettingsRead:
+    settings = latest_settings(db, cassa.id)
     if not settings:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Settings not configured")
     return SettingsRead(
@@ -28,8 +33,10 @@ def get_settings(db: DbSession, _: CurrentUser) -> SettingsRead:
 
 
 @router.put("", response_model=SettingsRead)
-def update_settings(data: SettingsInput, db: DbSession, _: OperatorUser) -> SettingsRead:
-    settings = latest_settings(db) or CampSettings()
+def update_settings(
+    data: SettingsInput, db: DbSession, operator: OperatorMembership
+) -> SettingsRead:
+    settings = latest_settings(db, operator.cassa_id) or CampSettings(cassa_id=operator.cassa_id)
     for field, value in data.model_dump(exclude={"category_budgets"}).items():
         setattr(settings, field, value)
     settings.max_budget = data.participants * data.quota_per_person

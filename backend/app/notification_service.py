@@ -3,7 +3,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Movement, Notification, User, UserRole
+from app.models import Membership, Movement, Notification, User, UserRole
 
 
 def format_amount(amount: Decimal) -> str:
@@ -17,19 +17,21 @@ def notify_admins_of_movement(
     *,
     reimbursement_requested: bool,
 ) -> None:
+    # Recipients are scoped to the movement's cassa: admins for every movement,
+    # plus cashiers when a reimbursement is requested.
+    roles = [UserRole.ADMIN, UserRole.CASHIER] if reimbursement_requested else [UserRole.ADMIN]
     recipients = list(
-        db.scalars(select(User).where(User.role == UserRole.ADMIN, User.id != creator.id)).all()
+        db.scalars(
+            select(User)
+            .join(Membership, Membership.user_id == User.id)
+            .where(
+                Membership.cassa_id == movement.cassa_id,
+                Membership.role.in_(roles),
+                User.id != creator.id,
+            )
+            .distinct()
+        ).all()
     )
-    if reimbursement_requested:
-        recipients.extend(
-            db.scalars(
-                select(User).where(
-                    User.role == UserRole.CASHIER,
-                    User.branch == movement.unit,
-                    User.id != creator.id,
-                )
-            ).all()
-        )
     kind = "reimbursement_requested" if reimbursement_requested else "movement_created"
     title = "Nuovo rimborso da effettuare" if reimbursement_requested else "Nuovo movimento"
     message = (

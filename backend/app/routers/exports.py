@@ -9,9 +9,10 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from sqlalchemy import select
 
-from app.dependencies import DbSession, OperatorUser
+from app.dependencies import CurrentCassa, DbSession, OperatorMembership
 from app.models import (
     BalanceType,
+    Cassa,
     Movement,
     MovementType,
     PaymentMethod,
@@ -97,13 +98,13 @@ def _movement_row(movement: Movement) -> dict:
     }
 
 
-def _transfer_row(transfer: TreasuryTransfer) -> dict:
+def _transfer_row(transfer: TreasuryTransfer, unit: str) -> dict:
     withdrawal = transfer.type == TransferType.WITHDRAWAL
     return {
         "created_at": transfer.created_at,
         "operation_date": transfer.operation_date,
         "supplier": "Giroconto",
-        "unit": "E/G",
+        "unit": unit,
         "balance_type": BalanceType.CAMP.value,
         "notes": transfer.notes,
         "cash_in": transfer.amount if withdrawal else Decimal("0"),
@@ -114,14 +115,24 @@ def _transfer_row(transfer: TreasuryTransfer) -> dict:
     }
 
 
-def build_excel_report(db: DbSession) -> Workbook:
-    settings = latest_settings(db)
+def build_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
+    settings = latest_settings(db, cassa.id)
     participants = settings.participants if settings else 0
     quota = settings.quota_per_person if settings else Decimal("0")
     cash_initial = settings.cash_initial if settings else Decimal("0")
     entries = [
-        *[_movement_row(item) for item in db.scalars(select(Movement)).all()],
-        *[_transfer_row(item) for item in db.scalars(select(TreasuryTransfer)).all()],
+        *[
+            _movement_row(item)
+            for item in db.scalars(
+                select(Movement).where(Movement.cassa_id == cassa.id)
+            ).all()
+        ],
+        *[
+            _transfer_row(item, cassa.unit)
+            for item in db.scalars(
+                select(TreasuryTransfer).where(TreasuryTransfer.cassa_id == cassa.id)
+            ).all()
+        ],
     ]
     entries.sort(key=lambda item: (item["operation_date"], item["created_at"]))
 
@@ -294,8 +305,8 @@ def build_excel_report(db: DbSession) -> Workbook:
 
 
 @router.get("/excel")
-def export_excel(db: DbSession, _: OperatorUser) -> StreamingResponse:
-    workbook = build_excel_report(db)
+def export_excel(db: DbSession, cassa: CurrentCassa, _: OperatorMembership) -> StreamingResponse:
+    workbook = build_excel_report(db, cassa)
     output = BytesIO()
     workbook.save(output)
     output.seek(0)

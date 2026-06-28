@@ -19,12 +19,13 @@ const roles = [
   { label: 'Cassiere', value: 'cashier' },
   { label: 'Admin', value: 'admin' },
 ]
+const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
+const ROLE_SEVERITY = { admin: 'success', cashier: 'warn', user: 'secondary' }
 const form = reactive({
   name: '',
   email: '',
-  role: 'user',
-  branch: 'E/G',
   password: '',
+  memberships: [{ unit: 'E/G', role: 'user' }],
 })
 const editing = computed(() => Boolean(editingId.value))
 const nameInvalid = computed(() => submitted.value && !form.name.trim())
@@ -32,6 +33,29 @@ const emailInvalid = computed(() => submitted.value && !form.email.trim())
 const passwordInvalid = computed(
   () => submitted.value && ((!editing.value || form.password) && form.password.length < 8),
 )
+const membershipsInvalid = computed(() => {
+  if (!submitted.value) return false
+  if (!form.memberships.length) return true
+  const units = form.memberships.map((item) => item.unit)
+  return new Set(units).size !== units.length
+})
+
+function availableUnits(index) {
+  return branches.filter(
+    (unit) => unit === form.memberships[index].unit
+      || !form.memberships.some((item, position) => position !== index && item.unit === unit),
+  )
+}
+
+function addMembership() {
+  const used = form.memberships.map((item) => item.unit)
+  const next = branches.find((unit) => !used.includes(unit))
+  if (next) form.memberships.push({ unit: next, role: 'user' })
+}
+
+function removeMembership(index) {
+  form.memberships.splice(index, 1)
+}
 
 async function loadUsers() {
   users.value = await api.get('/users')
@@ -39,7 +63,7 @@ async function loadUsers() {
 
 function openCreate() {
   editingId.value = null
-  Object.assign(form, { name: '', email: '', role: 'user', branch: 'E/G', password: '' })
+  Object.assign(form, { name: '', email: '', password: '', memberships: [{ unit: 'E/G', role: 'user' }] })
   submitted.value = false
   error.value = ''
   dialogVisible.value = true
@@ -50,9 +74,10 @@ function openEdit(user) {
   Object.assign(form, {
     name: user.name,
     email: user.email,
-    role: user.role,
-    branch: user.branch,
     password: '',
+    memberships: user.memberships.length
+      ? user.memberships.map((item) => ({ unit: item.unit, role: item.role }))
+      : [{ unit: 'E/G', role: 'user' }],
   })
   submitted.value = false
   error.value = ''
@@ -62,11 +87,15 @@ function openEdit(user) {
 async function save() {
   submitted.value = true
   error.value = ''
-  if (nameInvalid.value || emailInvalid.value || passwordInvalid.value) return
+  if (nameInvalid.value || emailInvalid.value || passwordInvalid.value || membershipsInvalid.value) return
   saving.value = true
   try {
-    const payload = { ...form }
-    if (editing.value && !payload.password) delete payload.password
+    const payload = {
+      name: form.name,
+      email: form.email,
+      memberships: form.memberships.map((item) => ({ unit: item.unit, role: item.role })),
+    }
+    if (!editing.value || form.password) payload.password = form.password
     if (editing.value) await api.put(`/users/${editingId.value}`, payload)
     else await api.post('/users', payload)
     await loadUsers()
@@ -87,6 +116,10 @@ async function save() {
 
 function initials(name) {
   return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
+}
+
+function roleLabel(role) {
+  return ROLE_LABELS[role] ?? role
 }
 
 onMounted(loadUsers)
@@ -120,9 +153,14 @@ onMounted(loadUsers)
                     <PTag v-if="user.id === session.user?.id" value="Tu" severity="secondary" />
                   </div>
                   <p class="mt-0.5 truncate text-xs text-slate-500">{{ user.email }}</p>
-                  <div class="mt-2 flex gap-1.5">
-                    <PTag :value="user.role" :severity="user.role === 'admin' ? 'success' : 'secondary'" class="capitalize" />
-                    <PTag :value="user.branch" severity="info" />
+                  <div class="mt-2 flex flex-wrap gap-1.5">
+                    <PTag
+                      v-for="membership in user.memberships"
+                      :key="membership.cassa_id"
+                      :value="`${membership.unit} · ${roleLabel(membership.role)}`"
+                      :severity="ROLE_SEVERITY[membership.role]"
+                    />
+                    <PTag v-if="!user.memberships.length" value="Nessuna cassa" severity="danger" />
                   </div>
                 </div>
                 <i class="pi pi-pencil text-sm text-slate-400" />
@@ -137,7 +175,7 @@ onMounted(loadUsers)
       <form class="summary-dialog__form" novalidate @submit.prevent="save">
         <p class="summary-dialog__intro">
           <i :class="editing ? 'pi pi-user-edit' : 'pi pi-user-plus'" />
-          {{ editing ? 'Aggiorna i dati e i permessi della persona.' : 'Crea un accesso e assegna ruolo e branca.' }}
+          {{ editing ? 'Aggiorna i dati e le casse della persona.' : 'Crea un accesso e assegna una o più casse.' }}
         </p>
         <div class="summary-dialog__field">
           <label for="user-name">Nome <span class="required-mark">*</span></label>
@@ -148,11 +186,44 @@ onMounted(loadUsers)
           <label for="user-email">Email <span class="required-mark">*</span></label>
           <PInputText id="user-email" v-model="form.email" type="email" :invalid="emailInvalid" fluid />
           <small v-if="emailInvalid" class="field-error">L’email è obbligatoria.</small>
+          <small class="mt-1 block text-[0.67rem] font-medium text-slate-500">
+            Deve appartenere al dominio del gruppo.
+          </small>
         </div>
-        <div class="user-dialog__selects">
-          <div class="summary-dialog__field"><label for="user-role">Ruolo</label><PSelect id="user-role" v-model="form.role" :options="roles" option-label="label" option-value="value" fluid /></div>
-          <div class="summary-dialog__field"><label for="user-branch">Branca</label><PSelect id="user-branch" v-model="form.branch" :options="branches" fluid /></div>
+
+        <div class="summary-dialog__field">
+          <div class="mb-1 flex items-center justify-between">
+            <label>Casse e ruoli <span class="required-mark">*</span></label>
+            <PButton
+              type="button"
+              label="Aggiungi"
+              icon="pi pi-plus"
+              text
+              size="small"
+              :disabled="form.memberships.length >= branches.length"
+              @click="addMembership"
+            />
+          </div>
+          <div class="space-y-2">
+            <div v-for="(membership, index) in form.memberships" :key="index" class="membership-row">
+              <PSelect v-model="membership.unit" :options="availableUnits(index)" class="membership-row__unit" />
+              <PSelect v-model="membership.role" :options="roles" option-label="label" option-value="value" class="membership-row__role" />
+              <PButton
+                type="button"
+                icon="pi pi-times"
+                text
+                rounded
+                severity="secondary"
+                aria-label="Rimuovi cassa"
+                :disabled="form.memberships.length === 1"
+                class="!h-9 !w-9"
+                @click="removeMembership(index)"
+              />
+            </div>
+          </div>
+          <small v-if="membershipsInvalid" class="field-error">Assegna almeno una cassa, senza unità ripetute.</small>
         </div>
+
         <div class="summary-dialog__field">
           <label for="user-password">Password <span v-if="!editing" class="required-mark">*</span></label>
           <PPassword id="user-password" v-model="form.password" :feedback="false" toggle-mask :invalid="passwordInvalid" fluid />
@@ -168,3 +239,18 @@ onMounted(loadUsers)
     </PDialog>
   </main>
 </template>
+
+<style scoped>
+.membership-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.membership-row__unit {
+  width: 7.5rem;
+  flex: none;
+}
+.membership-row__role {
+  flex: 1 1 auto;
+}
+</style>

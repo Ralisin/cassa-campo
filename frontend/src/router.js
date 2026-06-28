@@ -1,6 +1,8 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useSessionStore } from '@/stores/session'
 
+// Mobile views (existing PWA experience) — rendered through the default
+// router-view inside MobileShell.
 const DashboardView = () => import('@/_UI/views/DashboardView.vue')
 const LoginView = () => import('@/_UI/views/LoginView.vue')
 const CassaSelectView = () => import('@/_UI/views/CassaSelectView.vue')
@@ -11,19 +13,33 @@ const SummaryView = () => import('@/_UI/views/SummaryView.vue')
 const UsersView = () => import('@/_UI/views/UsersView.vue')
 const ReimbursementsView = () => import('@/_UI/views/ReimbursementsView.vue')
 
+// Desktop "gestionale" views — rendered through the `desktop` named router-view
+// inside DesktopShell. They reuse the same stores/API as the mobile views.
+const DDashboardView = () => import('@/desktop/views/DashboardView.vue')
+const DLoginView = () => import('@/desktop/views/LoginView.vue')
+const DCassaSelectView = () => import('@/desktop/views/CassaSelectView.vue')
+const DMovementDetailView = () => import('@/desktop/views/MovementDetailView.vue')
+const DMovementFormView = () => import('@/desktop/views/MovementFormView.vue')
+const DMovementsView = () => import('@/desktop/views/MovementsView.vue')
+const DSummaryView = () => import('@/desktop/views/SummaryView.vue')
+const DSettingsView = () => import('@/desktop/views/SettingsView.vue')
+const DUsersView = () => import('@/desktop/views/UsersView.vue')
+const DReimbursementsView = () => import('@/desktop/views/ReimbursementsView.vue')
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/login', component: LoginView, meta: { public: true } },
-    { path: '/seleziona-cassa', component: CassaSelectView, meta: { cassaSelect: true } },
-    { path: '/', component: DashboardView, meta: { title: 'Campo 2026 · Reparto', nav: 'home' } },
-    { path: '/movimenti', component: MovementsView, meta: { title: 'Movimenti', nav: 'movements' } },
-    { path: '/movimenti/nuovo', component: MovementFormView, meta: { title: 'Nuovo movimento', nav: 'new', back: true } },
-    { path: '/movimenti/:id', component: MovementDetailView, meta: { title: 'Dettaglio movimento', nav: 'movements', back: true } },
-    { path: '/movimenti/:id/modifica', component: MovementFormView, meta: { title: 'Modifica movimento', nav: 'movements', back: true } },
-    { path: '/riepilogo', component: SummaryView, meta: { title: 'Riepilogo campo', nav: 'summary' } },
-    { path: '/utenti', component: UsersView, meta: { title: 'Gestione utenti', nav: 'users', admin: true } },
-    { path: '/rimborsi', component: ReimbursementsView, meta: { title: 'Rimborsi', nav: 'reimbursements' } },
+    { path: '/login', components: { default: LoginView, desktop: DLoginView }, meta: { public: true } },
+    { path: '/seleziona-cassa', components: { default: CassaSelectView, desktop: DCassaSelectView }, meta: { cassaSelect: true } },
+    { path: '/', components: { default: DashboardView, desktop: DDashboardView }, meta: { title: 'Campo 2026 · Reparto', nav: 'home' } },
+    { path: '/movimenti', components: { default: MovementsView, desktop: DMovementsView }, meta: { title: 'Movimenti', nav: 'movements' } },
+    { path: '/movimenti/nuovo', components: { default: MovementFormView, desktop: DMovementFormView }, meta: { title: 'Nuovo movimento', nav: 'new', back: true } },
+    { path: '/movimenti/:id', components: { default: MovementDetailView, desktop: DMovementDetailView }, meta: { title: 'Dettaglio movimento', nav: 'movements', back: true } },
+    { path: '/movimenti/:id/modifica', components: { default: MovementFormView, desktop: DMovementFormView }, meta: { title: 'Modifica movimento', nav: 'movements', back: true } },
+    { path: '/riepilogo', components: { default: SummaryView, desktop: DSummaryView }, meta: { title: 'Riepilogo campo', nav: 'summary' } },
+    { path: '/impostazioni', components: { default: SummaryView, desktop: DSettingsView }, meta: { title: 'Impostazioni', nav: 'settings', operator: true } },
+    { path: '/utenti', components: { default: UsersView, desktop: DUsersView }, meta: { title: 'Gestione utenti', nav: 'users', admin: true } },
+    { path: '/rimborsi', components: { default: ReimbursementsView, desktop: DReimbursementsView }, meta: { title: 'Rimborsi', nav: 'reimbursements' } },
   ],
 })
 
@@ -47,6 +63,7 @@ router.beforeEach(async (to) => {
   // Every other private page requires an active cassa.
   if (!to.meta.public && session.needsCassaSelection) return '/seleziona-cassa'
   if (to.meta.admin && !session.isAdmin) return '/'
+  if (to.meta.operator && !session.isOperator) return '/'
   return true
 })
 

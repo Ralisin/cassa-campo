@@ -5,6 +5,7 @@ from app.core.security import create_access_token, verify_password
 from app.dependencies import CurrentUser, DbSession
 from app.models import User
 from app.schemas import LoginRequest, Token, UserRead
+from app.services import user_to_read
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -18,6 +19,6 @@ def login(data: LoginRequest, db: DbSession) -> Token:
 
 
 @router.get("/me", response_model=UserRead)
-def me(user: CurrentUser) -> User:
-    return user
+def me(user: CurrentUser) -> UserRead:
+    return user_to_read(user)
 

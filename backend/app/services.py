@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.models import (
     CampCategoryBudget,
     CampSettings,
+    Cassa,
     ExpenseCategory,
     Movement,
     MovementReimbursement,
@@ -17,9 +18,16 @@ from app.models import (
     TransferType,
     TreasuryTransfer,
     User,
-    UserRole,
 )
-from app.schemas import CategorySummary, DashboardRead, MovementInput, MovementRead, MovementReceiptRead
+from app.schemas import (
+    CategorySummary,
+    DashboardRead,
+    MembershipRead,
+    MovementInput,
+    MovementRead,
+    MovementReceiptRead,
+    UserRead,
+)
 
 ZERO = Decimal("0.00")
 CAMP_TIMEZONE = ZoneInfo("Europe/Rome")
@@ -27,6 +35,27 @@ CAMP_TIMEZONE = ZoneInfo("Europe/Rome")
 
 def camp_today() -> date:
     return datetime.now(CAMP_TIMEZONE).date()
+
+
+def user_to_read(user: User) -> UserRead:
+    return UserRead(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        group_id=user.group_id,
+        created_at=user.created_at,
+        memberships=[
+            MembershipRead(
+                cassa_id=membership.cassa_id,
+                unit=membership.cassa.unit,
+                role=membership.role,
+                group_id=membership.cassa.group_id,
+                group_slug=membership.cassa.group.slug,
+                group_name=membership.cassa.group.name,
+            )
+            for membership in user.memberships
+        ],
+    )
 
 
 def movement_to_read(movement: Movement) -> MovementRead:
@@ -62,25 +91,29 @@ def movement_to_read(movement: Movement) -> MovementRead:
     )
 
 
-def apply_movement_input(movement: Movement, data: MovementInput) -> None:
-    for field, value in data.model_dump(exclude={"needs_reimbursement"}).items():
+def apply_movement_input(movement: Movement, data: MovementInput, cassa: Cassa) -> None:
+    for field, value in data.model_dump(exclude={"needs_reimbursement", "unit"}).items():
         setattr(movement, field, value)
+    movement.cassa_id = cassa.id
+    movement.unit = cassa.unit
     if data.needs_reimbursement and movement.reimbursement is None:
         movement.reimbursement = MovementReimbursement()
     elif not data.needs_reimbursement and movement.reimbursement is not None:
         movement.reimbursement = None
 
 
-def enforce_user_branch(data: MovementInput, user: User) -> None:
-    if user.role not in (UserRole.ADMIN, UserRole.CASHIER):
-        data.unit = user.branch
-
-
-def get_dashboard(db: Session) -> DashboardRead:
-    settings = db.scalar(select(CampSettings).order_by(CampSettings.created_at.desc()).limit(1))
+def get_dashboard(db: Session, cassa_id) -> DashboardRead:
+    settings = db.scalar(
+        select(CampSettings)
+        .where(CampSettings.cassa_id == cassa_id)
+        .order_by(CampSettings.created_at.desc())
+        .limit(1)
+    )
 
     def total(movement_type: MovementType, method: PaymentMethod | None = None) -> Decimal:
-        query = select(func.coalesce(func.sum(Movement.amount), 0)).where(Movement.type == movement_type)
+        query = select(func.coalesce(func.sum(Movement.amount), 0)).where(
+            Movement.type == movement_type, Movement.cassa_id == cassa_id
+        )
         if method:
             query = query.where(Movement.payment_method == method)
         return Decimal(db.scalar(query) or 0)
@@ -94,7 +127,8 @@ def get_dashboard(db: Session) -> DashboardRead:
     withdrawals = Decimal(
         db.scalar(
             select(func.coalesce(func.sum(TreasuryTransfer.amount), 0)).where(
-                TreasuryTransfer.type == TransferType.WITHDRAWAL
+                TreasuryTransfer.type == TransferType.WITHDRAWAL,
+                TreasuryTransfer.cassa_id == cassa_id,
             )
         )
         or 0
@@ -102,7 +136,8 @@ def get_dashboard(db: Session) -> DashboardRead:
     deposits = Decimal(
         db.scalar(
             select(func.coalesce(func.sum(TreasuryTransfer.amount), 0)).where(
-                TreasuryTransfer.type == TransferType.DEPOSIT
+                TreasuryTransfer.type == TransferType.DEPOSIT,
+                TreasuryTransfer.cassa_id == cassa_id,
             )
         )
         or 0
@@ -125,7 +160,10 @@ def get_dashboard(db: Session) -> DashboardRead:
         db.scalar(
             select(func.coalesce(func.sum(Movement.amount), 0))
             .join(Movement.reimbursement)
-            .where(MovementReimbursement.reimbursed_at.is_(None))
+            .where(
+                MovementReimbursement.reimbursed_at.is_(None),
+                Movement.cassa_id == cassa_id,
+            )
         )
         or 0
     )
@@ -136,32 +174,34 @@ def get_dashboard(db: Session) -> DashboardRead:
             joinedload(Movement.creator),
             selectinload(Movement.receipts),
         )
-        .where(Movement.operation_date == camp_today())
+        .where(Movement.operation_date == camp_today(), Movement.cassa_id == cassa_id)
         .order_by(Movement.created_at.desc())
     ).all()
-    category_rows = db.execute(
-        select(
-            ExpenseCategory.slug,
-            ExpenseCategory.label,
-            func.coalesce(CampCategoryBudget.amount, 0),
-            func.coalesce(func.sum(Movement.amount), 0),
-        )
-        .outerjoin(
-            CampCategoryBudget,
-            (CampCategoryBudget.category == ExpenseCategory.slug)
-            & (CampCategoryBudget.settings_id == settings.id if settings else False),
-        )
-        .outerjoin(
-            Movement,
-            (Movement.category == ExpenseCategory.slug) & (Movement.type == MovementType.EXPENSE),
-        )
+    budgets: dict[str, Decimal] = {}
+    if settings:
+        budgets = {
+            category: amount
+            for category, amount in db.execute(
+                select(CampCategoryBudget.category, CampCategoryBudget.amount).where(
+                    CampCategoryBudget.settings_id == settings.id
+                )
+            ).all()
+        }
+    spent_by_category = {
+        category: Decimal(amount or 0)
+        for category, amount in db.execute(
+            select(Movement.category, func.coalesce(func.sum(Movement.amount), 0))
+            .where(
+                Movement.type == MovementType.EXPENSE,
+                Movement.cassa_id == cassa_id,
+                Movement.category.is_not(None),
+            )
+            .group_by(Movement.category)
+        ).all()
+    }
+    categories = db.scalars(
+        select(ExpenseCategory)
         .where(ExpenseCategory.active.is_(True))
-        .group_by(
-            ExpenseCategory.slug,
-            ExpenseCategory.label,
-            ExpenseCategory.position,
-            CampCategoryBudget.amount,
-        )
         .order_by(ExpenseCategory.position)
     ).all()
     return DashboardRead(
@@ -172,8 +212,13 @@ def get_dashboard(db: Session) -> DashboardRead:
         pending_reimbursements=pending_reimbursements,
         bank_balance=bank_balance,
         category_summaries=[
-            CategorySummary(category=slug, label=label, budget=budget, spent=category_spent)
-            for slug, label, budget, category_spent in category_rows
+            CategorySummary(
+                category=category.slug,
+                label=category.label,
+                budget=budgets.get(category.slug, ZERO),
+                spent=spent_by_category.get(category.slug, ZERO),
+            )
+            for category in categories
         ],
         today_movements=[movement_to_read(item) for item in today_movements],
     )

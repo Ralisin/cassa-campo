@@ -9,12 +9,12 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 
-from app.dependencies import CurrentUser, DbSession, can_edit_movement
+from app.dependencies import CurrentCassa, CurrentMembership, DbSession, can_edit_movement
 from app.models import Movement, MovementReimbursement, MovementType, PaymentMethod, User
 from app.notification_service import notify_admins_of_movement
 from app.receipt_storage import get_receipt_storage
 from app.schemas import MovementCreatorRead, MovementInput, MovementPage, MovementRead
-from app.services import apply_movement_input, enforce_user_branch, movement_to_read
+from app.services import apply_movement_input, movement_to_read
 
 router = APIRouter(prefix="/movements", tags=["movements"])
 
@@ -38,7 +38,7 @@ def decode_cursor(cursor: str) -> tuple[date, datetime, uuid.UUID]:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Invalid cursor") from exc
 
 
-def get_movement_or_404(db: DbSession, movement_id: uuid.UUID) -> Movement:
+def get_movement_or_404(db: DbSession, movement_id: uuid.UUID, cassa_id: uuid.UUID) -> Movement:
     movement = db.scalar(
         select(Movement)
         .options(
@@ -46,7 +46,7 @@ def get_movement_or_404(db: DbSession, movement_id: uuid.UUID) -> Movement:
             joinedload(Movement.creator),
             selectinload(Movement.receipts),
         )
-        .where(Movement.id == movement_id)
+        .where(Movement.id == movement_id, Movement.cassa_id == cassa_id)
     )
     if not movement:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Movement not found")
@@ -56,7 +56,7 @@ def get_movement_or_404(db: DbSession, movement_id: uuid.UUID) -> Movement:
 @router.get("", response_model=MovementPage)
 def list_movements(
     db: DbSession,
-    _: CurrentUser,
+    cassa: CurrentCassa,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = PAGE_SIZE,
     query: Annotated[str | None, Query(max_length=255)] = None,
@@ -65,7 +65,7 @@ def list_movements(
     creator: uuid.UUID | None = None,
     reimbursement: Annotated[str | None, Query(pattern="^(da_rimborsare|rimborsato|nessuno)$")] = None,
 ) -> MovementPage:
-    filters = []
+    filters = [Movement.cassa_id == cassa.id]
     if query and (term := query.strip()):
         pattern = f"%{term}%"
         filters.append(
@@ -134,6 +134,7 @@ def list_movements(
     creators = db.execute(
         select(User.id, User.name)
         .join(Movement, Movement.created_by == User.id)
+        .where(Movement.cassa_id == cassa.id)
         .distinct()
         .order_by(User.name)
     ).all()
@@ -146,50 +147,50 @@ def list_movements(
 
 
 @router.get("/{movement_id}", response_model=MovementRead)
-def get_movement(movement_id: uuid.UUID, db: DbSession, _: CurrentUser) -> MovementRead:
-    return movement_to_read(get_movement_or_404(db, movement_id))
+def get_movement(movement_id: uuid.UUID, db: DbSession, cassa: CurrentCassa) -> MovementRead:
+    return movement_to_read(get_movement_or_404(db, movement_id, cassa.id))
 
 
 @router.post("", response_model=MovementRead, status_code=status.HTTP_201_CREATED)
-def create_movement(data: MovementInput, db: DbSession, user: CurrentUser) -> MovementRead:
-    enforce_user_branch(data, user)
-    movement = Movement(created_by=user.id)
-    apply_movement_input(movement, data)
+def create_movement(data: MovementInput, db: DbSession, membership: CurrentMembership) -> MovementRead:
+    cassa = membership.cassa
+    movement = Movement(created_by=membership.user_id)
+    apply_movement_input(movement, data, cassa)
     db.add(movement)
     db.flush()
     notify_admins_of_movement(
         db,
         movement,
-        user,
+        membership.user,
         reimbursement_requested=data.needs_reimbursement,
     )
     db.commit()
     db.refresh(movement)
-    return movement_to_read(get_movement_or_404(db, movement.id))
+    return movement_to_read(get_movement_or_404(db, movement.id, cassa.id))
 
 
 @router.put("/{movement_id}", response_model=MovementRead)
 def update_movement(
-    movement_id: uuid.UUID, data: MovementInput, db: DbSession, user: CurrentUser
+    movement_id: uuid.UUID, data: MovementInput, db: DbSession, membership: CurrentMembership
 ) -> MovementRead:
-    movement = get_movement_or_404(db, movement_id)
-    if not can_edit_movement(user, movement.created_by):
+    cassa = membership.cassa
+    movement = get_movement_or_404(db, movement_id, cassa.id)
+    if not can_edit_movement(membership, movement.created_by):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
-    enforce_user_branch(data, user)
     reimbursement_requested = movement.reimbursement is None and data.needs_reimbursement
-    apply_movement_input(movement, data)
+    apply_movement_input(movement, data, cassa)
     if reimbursement_requested:
-        notify_admins_of_movement(db, movement, user, reimbursement_requested=True)
+        notify_admins_of_movement(db, movement, membership.user, reimbursement_requested=True)
     db.commit()
-    return movement_to_read(get_movement_or_404(db, movement.id))
+    return movement_to_read(get_movement_or_404(db, movement.id, cassa.id))
 
 
 @router.delete("/{movement_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_movement(
-    movement_id: uuid.UUID, db: DbSession, user: CurrentUser
+    movement_id: uuid.UUID, db: DbSession, membership: CurrentMembership
 ) -> Response:
-    movement = get_movement_or_404(db, movement_id)
-    if not can_edit_movement(user, movement.created_by):
+    movement = get_movement_or_404(db, movement_id, membership.cassa_id)
+    if not can_edit_movement(membership, movement.created_by):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     if movement.receipts:
         storage = get_receipt_storage()

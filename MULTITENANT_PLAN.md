@@ -106,12 +106,11 @@ Nessun worker parallelo: tutto il resto dipende da qui.
 
 > ✅ **Test di integrazione aggiunti:** `tests/conftest.py` (Postgres docker, DB di
 > test dedicato, sessione transazionale, TestClient, factory) + `tests/test_multitenant.py`
-> (19 test HTTP su scope/isolamento/ruoli/gestione). `pytest` → 22 passed.
+> (19 test HTTP su scope/isolamento/ruoli/gestione).
 >
-> 🔧 **Sotto-task residuo (FASE 2b):** i 13 file di test legacy pre-multitenant sono
-> esclusi dalla collection (`collect_ignore` in conftest) perche' costruiscono
-> `User(role=, branch=)` e chiamano le vecchie firme dei router. Vanno portati o
-> rimpiazzati riusando le fixture di conftest.
+> ✅ **FASE 2b completata:** tutti i 13 file di test legacy sono stati portati al
+> modello multi-tenant (group/cassa/membership, nuove firme dei router, scope per
+> cassa). `pytest` → **54 passed**, lint pulito.
 
 ### FASE 3 — Gestione gruppo/utenti/casse (backend) ✅ FATTA
 - [x] users.py: scope al gruppo dell'admin; CRUD utenti + sync memberships

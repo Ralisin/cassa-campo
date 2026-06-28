@@ -69,11 +69,12 @@ export async function refreshPendingCount() {
   return pendingCount.value
 }
 
-export async function queueMovement(payload, receipts = [], userId = null) {
+export async function queueMovement(payload, receipts = [], userId = null, cassaId = null) {
   const item = {
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     userId,
+    cassaId,
     payload: { ...payload },
     receipts: receipts.map((file) => ({
       id: crypto.randomUUID(),
@@ -109,9 +110,10 @@ export async function syncQueuedMovements(currentUserId = null) {
       }
 
       try {
+        const cassaOptions = item.cassaId ? { cassaId: item.cassaId } : {}
         let movementId = item.savedMovementId
         if (!movementId) {
-          const saved = await api.post('/movements', item.payload)
+          const saved = await api.post('/movements', item.payload, cassaOptions)
           movementId = saved.id
           item.savedMovementId = movementId
           await updateQueuedMovement(item)
@@ -120,7 +122,7 @@ export async function syncQueuedMovements(currentUserId = null) {
         const uploaded = new Set(item.uploadedReceiptIds)
         for (const receipt of item.receipts) {
           if (uploaded.has(receipt.id)) continue
-          await uploadReceipt(movementId, receipt.file)
+          await uploadReceipt(movementId, receipt.file, cassaOptions)
           uploaded.add(receipt.id)
           item.uploadedReceiptIds = Array.from(uploaded)
           await updateQueuedMovement(item)

@@ -45,14 +45,18 @@ function errorMessage(detail) {
 }
 
 async function request(path, options = {}) {
+  const { cassaId, ...fetchOptions } = options
   const token = localStorage.getItem('access_token')
-  const jsonBody = options.body && !(options.body instanceof FormData)
+  // Default to the active cassa; callers (e.g. the offline queue) may override it.
+  const cassa = cassaId ?? localStorage.getItem('active_cassa_id')
+  const jsonBody = fetchOptions.body && !(fetchOptions.body instanceof FormData)
   const response = await fetch(`${API_URL}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: {
       ...(jsonBody ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
+      ...(cassa ? { 'X-Cassa-Id': cassa } : {}),
+      ...fetchOptions.headers,
     },
   })
   if (!response.ok) {
@@ -64,16 +68,16 @@ async function request(path, options = {}) {
 }
 
 export const api = {
-  get: (path) => request(path),
-  post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) }),
-  put: (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body) }),
-  delete: (path) => request(path, { method: 'DELETE' }),
+  get: (path, options = {}) => request(path, options),
+  post: (path, body, options = {}) => request(path, { method: 'POST', body: JSON.stringify(body), ...options }),
+  put: (path, body, options = {}) => request(path, { method: 'PUT', body: JSON.stringify(body), ...options }),
+  delete: (path, options = {}) => request(path, { method: 'DELETE', ...options }),
 }
 
-export async function uploadReceipt(movementId, file) {
+export async function uploadReceipt(movementId, file, options = {}) {
   const body = new FormData()
   body.append('file', file)
-  return request(`/movements/${movementId}/receipts`, { method: 'POST', body, headers: {} })
+  return request(`/movements/${movementId}/receipts`, { method: 'POST', body, headers: {}, ...options })
 }
 
 export async function downloadReceipt(movementId, receipt) {
@@ -87,8 +91,12 @@ export async function downloadReceipt(movementId, receipt) {
 }
 
 export async function downloadExcel() {
+  const cassaId = localStorage.getItem('active_cassa_id')
   const response = await fetch(`${API_URL}/exports/excel`, {
-    headers: { Authorization: `Bearer ${localStorage.getItem('access_token')}` },
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+      ...(cassaId ? { 'X-Cassa-Id': cassaId } : {}),
+    },
   })
   if (!response.ok) throw new ApiError('Esportazione non riuscita', response.status)
   const url = URL.createObjectURL(await response.blob())

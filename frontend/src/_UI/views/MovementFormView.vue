@@ -10,7 +10,6 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const editing = computed(() => typeof route.params.id === 'string')
-const unitReadOnly = computed(() => !session.isOperator)
 const saving = ref(false)
 const error = ref('')
 const offlineNotice = ref('')
@@ -18,7 +17,6 @@ const submitted = ref(false)
 const receiptInput = ref(null)
 const receiptCameraInput = ref(null)
 const selectedReceipts = ref([])
-const units = ['L/C', 'E/G', 'R/S', 'CoCa', 'Gruppo']
 const balanceTypes = [
   { label: 'Campo', value: 'C' },
   { label: 'Ordinario', value: 'O' },
@@ -56,7 +54,7 @@ const form = reactive({
   type: 'uscita',
   payment_method: 'contanti',
   supplier: '',
-  unit: session.user?.branch ?? 'E/G',
+  unit: session.activeCassa?.unit ?? '',
   balance_type: 'C',
   category: 'varie',
   amount: 0,
@@ -106,7 +104,7 @@ watch(
 onMounted(async () => {
   if (!session.user) await session.loadUser()
   if (!editing.value) {
-    form.unit = session.user?.branch ?? 'E/G'
+    form.unit = session.activeCassa?.unit ?? ''
     return
   }
   const movement = await api.get(`/movements/${route.params.id}`)
@@ -115,7 +113,8 @@ onMounted(async () => {
     return
   }
   Object.assign(form, movement, { amount: Number(movement.amount) })
-  if (unitReadOnly.value) form.unit = session.user.branch
+  // The unit always follows the active cassa.
+  form.unit = session.activeCassa?.unit ?? form.unit
 })
 
 async function submit() {
@@ -137,7 +136,7 @@ async function submit() {
       const canQueue = !editing.value && (!navigator.onLine || cause instanceof TypeError)
       if (!canQueue) throw cause
 
-      await queueMovement(payload, selectedReceipts.value, session.user?.id)
+      await queueMovement(payload, selectedReceipts.value, session.user?.id, session.activeCassaId)
       offlineNotice.value = 'Movimento salvato sul dispositivo. Verrà sincronizzato appena torna la connessione.'
       window.setTimeout(() => router.push('/movimenti'), 900)
       return
@@ -218,7 +217,7 @@ function formatBytes(bytes) {
               <div><label for="supplier">Fornitore <span class="required-mark">*</span></label><PInputText id="supplier" v-model="form.supplier" :invalid="supplierInvalid" placeholder="Es. Esselunga" fluid /><small v-if="supplierInvalid" class="field-error">Il fornitore è obbligatorio.</small></div>
             </div>
             <div class="movement-form-field-pair">
-              <div><label for="unit">Unità</label><PSelect id="unit" v-model="form.unit" :options="units" :disabled="unitReadOnly" fluid /><small v-if="unitReadOnly" class="mt-1 block text-[0.67rem] font-medium text-slate-500">Definita dal tuo profilo.</small></div>
+              <div><label for="unit">Unità</label><PInputText id="unit" v-model="form.unit" disabled fluid /><small class="mt-1 block text-[0.67rem] font-medium text-slate-500">Definita dalla cassa attiva.</small></div>
               <div><label for="balance-type">Bilancio</label><PSelect id="balance-type" v-model="form.balance_type" :options="balanceTypes" option-label="label" option-value="value" fluid /></div>
             </div>
             <div v-if="form.type === 'uscita'" class="movement-form-field-pair">

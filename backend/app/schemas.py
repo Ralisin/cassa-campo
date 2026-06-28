@@ -24,29 +24,58 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class GroupRead(ApiModel):
+    id: uuid.UUID
+    slug: str
+    name: str
+    email_domain: str
+
+
+class CassaRead(ApiModel):
+    id: uuid.UUID
+    group_id: uuid.UUID
+    unit: Branch
+
+
+class CassaCreate(BaseModel):
+    unit: Branch
+
+
+class MembershipRead(BaseModel):
+    cassa_id: uuid.UUID
+    unit: Branch
+    role: UserRole
+    group_id: uuid.UUID
+    group_slug: str
+    group_name: str
+
+
 class UserRead(ApiModel):
     id: uuid.UUID
     email: EmailStr
     name: str
-    role: UserRole
-    branch: Branch
+    group_id: uuid.UUID
     created_at: datetime
+    memberships: list[MembershipRead] = Field(default_factory=list)
+
+
+class MembershipInput(BaseModel):
+    unit: Branch
+    role: UserRole = UserRole.USER
 
 
 class UserCreate(BaseModel):
     email: EmailStr
     name: str = Field(min_length=1, max_length=255)
-    role: UserRole = UserRole.USER
-    branch: Branch
     password: str = Field(min_length=8, max_length=72)
+    memberships: list[MembershipInput] = Field(min_length=1)
 
 
 class UserUpdate(BaseModel):
     email: EmailStr
     name: str = Field(min_length=1, max_length=255)
-    role: UserRole
-    branch: Branch
     password: str | None = Field(default=None, min_length=8, max_length=72)
+    memberships: list[MembershipInput] = Field(min_length=1)
 
 
 class MovementInput(BaseModel):
@@ -54,7 +83,9 @@ class MovementInput(BaseModel):
     type: MovementType
     payment_method: PaymentMethod
     supplier: str = Field(min_length=1, max_length=255)
-    unit: Branch
+    # The unit is always forced server-side to the active cassa's unit; any value
+    # sent by the client is ignored.
+    unit: Branch | None = None
     balance_type: BalanceType = BalanceType.CAMP
     category: ExpenseCategorySlug | None = None
     amount: Decimal = Field(gt=0, decimal_places=2)

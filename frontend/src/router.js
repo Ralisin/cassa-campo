@@ -3,6 +3,7 @@ import { useSessionStore } from '@/stores/session'
 
 const DashboardView = () => import('@/_UI/views/DashboardView.vue')
 const LoginView = () => import('@/_UI/views/LoginView.vue')
+const CassaSelectView = () => import('@/_UI/views/CassaSelectView.vue')
 const MovementDetailView = () => import('@/_UI/views/MovementDetailView.vue')
 const MovementFormView = () => import('@/_UI/views/MovementFormView.vue')
 const MovementsView = () => import('@/_UI/views/MovementsView.vue')
@@ -14,6 +15,7 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', component: LoginView, meta: { public: true } },
+    { path: '/seleziona-cassa', component: CassaSelectView, meta: { cassaSelect: true } },
     { path: '/', component: DashboardView, meta: { title: 'Campo 2026 · Reparto', nav: 'home' } },
     { path: '/movimenti', component: MovementsView, meta: { title: 'Movimenti', nav: 'movements' } },
     { path: '/movimenti/nuovo', component: MovementFormView, meta: { title: 'Nuovo movimento', nav: 'new', back: true } },
@@ -26,13 +28,26 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
-  if (!to.meta.public && !localStorage.getItem('access_token')) return '/login'
-  if (to.path === '/login' && localStorage.getItem('access_token')) return '/'
-  if (to.meta.admin) {
-    const session = useSessionStore()
-    if (!session.user) await session.loadUser()
-    if (!session.isAdmin) return '/'
+  const token = localStorage.getItem('access_token')
+  if (!to.meta.public && !token) return '/login'
+  if (to.path === '/login' && token) return '/'
+  if (!token) return true
+
+  const session = useSessionStore()
+  if (!session.user) {
+    try {
+      await session.loadUser()
+    } catch {
+      session.logout()
+      return '/login'
+    }
   }
+  // The cassa picker is always reachable once authenticated.
+  if (to.meta.cassaSelect) return true
+  // Every other private page requires an active cassa.
+  if (!to.meta.public && session.needsCassaSelection) return '/seleziona-cassa'
+  if (to.meta.admin && !session.isAdmin) return '/'
+  return true
 })
 
 export default router

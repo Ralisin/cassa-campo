@@ -120,27 +120,36 @@ Nessun worker parallelo: tutto il resto dipende da qui.
       un'unità), admin-only, registrato in main.py.
 **Deliverable:** un admin gestisce utenti e casse del proprio gruppo via API. ✅
 
-### FASE 4 — Frontend: sessione, portale, header (frontend)
-- [ ] session.js: `memberships`, `activeCassa`, `setCassa`, ruolo derivato dalla cassa attiva.
-- [ ] api.js: iniettare header `X-Cassa-Id` dalla cassa attiva.
-- [ ] router.js: guard che redirige al portale se nessuna cassa selezionata;
-      route `/seleziona-cassa`.
-- [ ] Nuova view `CassaSelectView`: lista casse dell'utente (gruppo+unità+ruolo).
-- [ ] App.vue: header mostra gruppo/unità attiva + switch cassa.
-**Deliverable:** login → (auto o scelta) cassa → app opera sulla cassa scelta.
+### FASE 4 — Frontend: sessione, portale, header (frontend) ✅ FATTA
+- [x] session.js: `memberships`, `activeCassa`, `setCassa`, ruolo/isAdmin/isOperator
+      derivati dalla cassa attiva; `needsCassaSelection`; auto-select con 1 cassa.
+- [x] api.js: header `X-Cassa-Id` dalla cassa attiva (con override per la coda
+      offline); anche l'export Excel lo invia.
+- [x] router.js: guard che reindirizza a `/seleziona-cassa` se nessuna cassa attiva;
+      route del portale; route admin sul ruolo della cassa attiva.
+- [x] `CassaSelectView`: lista casse dell'utente (gruppo+unità+ruolo) + stato vuoto.
+- [x] App.vue: header con gruppo·unità, profilo con ruolo/unità/gruppo, voce
+      "Cambia cassa", chrome nascosta nel portale.
+**Deliverable:** login → (auto o scelta) cassa → app opera sulla cassa scelta. ✅
 
-### FASE 5 — Frontend: viste e gestione (frontend)
-> Parallelizzabile: Worker A viste dati, Worker B gestione utenti/casse.
-- [ ] MovementFormView: unità fissata dalla cassa (non selezionabile).
-- [ ] Dashboard/Movements/Summary/Reimbursements: nessuna logica branch globale residua.
-- [ ] UsersView: gestione utenti del gruppo + assegnazione casse/ruoli.
-- [ ] Nuova UI gestione casse (crea unità mancante).
-**Deliverable:** UI completa multi-cassa.
+### FASE 5 — Frontend: viste e gestione (frontend) ✅ FATTA
+- [x] MovementFormView: unità in sola lettura dalla cassa attiva; coda offline
+      registra la cassa del movimento.
+- [x] Dashboard/Movements/Summary/Reimbursements: usano `session.isAdmin/isOperator`
+      della cassa attiva (nessuna logica branch globale residua).
+- [x] UsersView: gestione utenti del gruppo con editor memberships (più casse +
+      ruolo per cassa, no unità duplicate, ≥1 cassa).
+- [x] Casse create on-demand assegnando una membership (+ endpoint `/casse`).
+**Deliverable:** UI completa multi-cassa. ✅
 
-### FASE 6 — Rifinitura
+> ✅ **Verifica end-to-end live** (backend + frontend su DB demo, utente multi-cassa):
+> login → portale (E/G admin, L/C cassiere) → dashboard scoped → tab Utenti per admin →
+> editor memberships → form movimento con unità read-only. Tutto OK.
+
+### FASE 6 — Rifinitura (parziale)
 - [ ] Aggiornare `cassa-campo.md` (architettura) e README.
-- [ ] Test end-to-end manuali con 2 gruppi e utente multi-cassa.
-- [ ] Verifica PWA/offlineQueue rispetti la cassa attiva.
+- [x] Test end-to-end manuali con utente multi-cassa (vedi sopra). Manca prova con 2 gruppi nella UI.
+- [x] offlineQueue registra e rispetta la cassa attiva.
 
 ---
 

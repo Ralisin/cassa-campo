@@ -3,7 +3,17 @@ import uuid
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, Enum, ForeignKey, Numeric, String, Text, func
+from sqlalchemy import (
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -44,6 +54,48 @@ class Branch(str, enum.Enum):
     GRUPPO = "Gruppo"
 
 
+class Group(Base):
+    __tablename__ = "groups"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(100), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    email_domain: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    users: Mapped[list["User"]] = relationship(back_populates="group")
+    casse: Mapped[list["Cassa"]] = relationship(back_populates="group", cascade="all, delete-orphan")
+
+
+class Cassa(Base):
+    __tablename__ = "casse"
+    __table_args__ = (UniqueConstraint("group_id", "unit", name="uq_casse_group_unit"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
+    unit: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    group: Mapped[Group] = relationship(back_populates="casse")
+    memberships: Mapped[list["Membership"]] = relationship(
+        back_populates="cassa", cascade="all, delete-orphan"
+    )
+
+
+class Membership(Base):
+    __tablename__ = "memberships"
+    __table_args__ = (UniqueConstraint("user_id", "cassa_id", name="uq_memberships_user_cassa"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    cassa_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("casse.id", ondelete="CASCADE"), index=True)
+    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.USER)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped["User"] = relationship(back_populates="memberships")
+    cassa: Mapped[Cassa] = relationship(back_populates="memberships")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -51,10 +103,13 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(255))
-    role: Mapped[UserRole] = mapped_column(Enum(UserRole), default=UserRole.USER)
-    branch: Mapped[str] = mapped_column(String(50))
+    group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("groups.id"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    group: Mapped[Group] = relationship(back_populates="users")
+    memberships: Mapped[list["Membership"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
     movements: Mapped[list["Movement"]] = relationship(back_populates="creator")
     transfers: Mapped[list["TreasuryTransfer"]] = relationship(back_populates="creator")
 
@@ -63,6 +118,7 @@ class CampSettings(Base):
     __tablename__ = "camp_settings"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    cassa_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("casse.id", ondelete="CASCADE"), index=True)
     camp_year: Mapped[int]
     camp_name: Mapped[str] = mapped_column(String(255))
     participants: Mapped[int] = mapped_column(default=0)
@@ -108,6 +164,7 @@ class Movement(Base):
     __tablename__ = "movements"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    cassa_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("casse.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     operation_date: Mapped[date] = mapped_column(Date)
     type: Mapped[MovementType] = mapped_column(Enum(MovementType))
@@ -174,6 +231,7 @@ class TreasuryTransfer(Base):
     __tablename__ = "treasury_transfers"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    cassa_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("casse.id", ondelete="CASCADE"), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     operation_date: Mapped[date] = mapped_column(Date)
     type: Mapped[TransferType] = mapped_column(Enum(TransferType))

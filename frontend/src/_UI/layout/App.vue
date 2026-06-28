@@ -30,7 +30,11 @@ const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent)
   || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches
   || window.navigator.standalone === true
+const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
 const userMenuItems = computed(() => [
+  ...(session.memberships.length > 1
+    ? [{ label: 'Cambia cassa', icon: 'pi pi-sync', command: () => router.push('/seleziona-cassa') }]
+    : []),
   { separator: true },
   {
     label: 'Esci',
@@ -151,7 +155,7 @@ function formatNotificationDate(value) {
 }
 
 async function loadNotifications() {
-  if (!session.authenticated || route.path === '/login') return
+  if (!session.authenticated || route.path === '/login' || !session.activeCassaId) return
   notificationsLoading.value = true
   try {
     const result = await api.get('/notifications')
@@ -163,7 +167,7 @@ async function loadNotifications() {
 }
 
 async function loadReimbursementCount() {
-  if (!session.authenticated || route.path === '/login') return
+  if (!session.authenticated || route.path === '/login' || !session.activeCassaId) return
   const result = await api.get('/reimbursements')
   pendingReimbursementCount.value = result.pending_count
 }
@@ -252,7 +256,7 @@ usePolling(syncOfflineQueue, 20000)
 </script>
 
 <template>
-  <div v-if="route.path !== '/login'" class="mx-auto min-h-screen max-w-3xl bg-[#f6f8f5] pb-24">
+  <div v-if="route.path !== '/login' && !route.meta.cassaSelect" class="mx-auto min-h-screen max-w-3xl bg-[#f6f8f5] pb-24">
     <PToolbar class="sticky top-0 z-30 !rounded-none !border-x-0 !border-t-0 !bg-white/95 !px-4 backdrop-blur">
       <template #start>
         <PButton v-if="route.meta.back" icon="pi pi-arrow-left" text rounded aria-label="Indietro" @click="router.back()" />
@@ -264,9 +268,10 @@ usePolling(syncOfflineQueue, 20000)
               <div class="min-w-0">
                 <p class="truncate text-sm font-black text-slate-900">{{ session.user?.name ?? 'Utente' }}</p>
                 <p class="mt-0.5 truncate text-xs text-slate-500">{{ session.user?.email }}</p>
-                <div class="mt-2 flex items-center gap-1.5">
-                  <PTag :value="session.user?.role ?? 'utente'" severity="secondary" class="capitalize" />
-                  <PTag v-if="session.user?.branch" :value="session.user.branch" severity="info" />
+                <div v-if="session.activeCassa" class="mt-2 flex flex-wrap items-center gap-1.5">
+                  <PTag :value="ROLE_LABELS[session.activeCassa.role] ?? session.activeCassa.role" severity="success" />
+                  <PTag :value="session.activeCassa.unit" severity="info" />
+                  <PTag :value="session.activeCassa.group_name" severity="secondary" />
                 </div>
               </div>
             </div>
@@ -278,7 +283,14 @@ usePolling(syncOfflineQueue, 20000)
           </template>
         </PMenu>
       </template>
-      <template #center><h1 class="text-center text-base font-black text-slate-900">{{ route.meta.title }}</h1></template>
+      <template #center>
+        <div class="text-center">
+          <h1 class="text-base font-black leading-tight text-slate-900">{{ route.meta.title }}</h1>
+          <p v-if="session.activeCassa" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">
+            {{ session.activeCassa.group_name }} · {{ session.activeCassa.unit }}
+          </p>
+        </div>
+      </template>
       <template #end>
         <div class="notification-bell">
           <PButton icon="pi pi-bell" text rounded aria-label="Notifiche" @click="toggleNotifications" />

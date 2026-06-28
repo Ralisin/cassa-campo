@@ -21,6 +21,13 @@ const roles = [
 ]
 const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
 const ROLE_SEVERITY = { admin: 'success', cashier: 'warn', user: 'secondary' }
+const ROLE_RANK = { admin: 0, cashier: 1, user: 2 }
+const sortKey = ref('name')
+const sortOptions = [
+  { label: 'Nome', value: 'name' },
+  { label: 'Branca', value: 'branch' },
+  { label: 'Permessi', value: 'role' },
+]
 const form = reactive({
   name: '',
   email: '',
@@ -33,12 +40,34 @@ const emailInvalid = computed(() => submitted.value && !form.email.trim())
 const passwordInvalid = computed(
   () => submitted.value && ((!editing.value || form.password) && form.password.length < 8),
 )
+function byName(a, b) {
+  return a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
+}
+
+function primaryBranchIndex(user) {
+  const indexes = user.memberships.map((item) => branches.indexOf(item.unit))
+  return indexes.length ? Math.min(...indexes) : Number.POSITIVE_INFINITY
+}
+
+function topRoleRank(user) {
+  const ranks = user.memberships.map((item) => ROLE_RANK[item.role] ?? Number.POSITIVE_INFINITY)
+  return ranks.length ? Math.min(...ranks) : Number.POSITIVE_INFINITY
+}
+
 const sortedUsers = computed(() =>
   [...users.value].sort((a, b) => {
-    const selfId = session.user?.id
-    if (a.id === selfId) return -1
-    if (b.id === selfId) return 1
-    return a.name.localeCompare(b.name, 'it', { sensitivity: 'base' })
+    if (sortKey.value === 'branch') {
+      const diff = primaryBranchIndex(a) - primaryBranchIndex(b)
+      if (diff) return diff
+    } else if (sortKey.value === 'role') {
+      const diff = topRoleRank(a) - topRoleRank(b)
+      if (diff) return diff
+    } else {
+      const selfId = session.user?.id
+      if (a.id === selfId) return -1
+      if (b.id === selfId) return 1
+    }
+    return byName(a, b)
   }),
 )
 const membershipsInvalid = computed(() => {
@@ -144,6 +173,19 @@ onMounted(loadUsers)
             <p class="mt-0.5 text-xs text-slate-500">{{ users.length }} profili registrati</p>
           </div>
           <PButton icon="pi pi-user-plus" rounded aria-label="Registra persona" class="primary-cta !h-11 !min-h-0 !w-11 !min-w-11 !p-0" @click="openCreate" />
+        </div>
+        <div class="mt-3 flex items-center gap-2">
+          <i class="pi pi-sort-alt text-xs text-slate-400" />
+          <span class="text-xs font-medium text-slate-500">Ordina per</span>
+          <PSelectButton
+            v-model="sortKey"
+            :options="sortOptions"
+            option-label="label"
+            option-value="value"
+            :allow-empty="false"
+            size="small"
+            class="users-sort"
+          />
         </div>
       </template>
     </PCard>

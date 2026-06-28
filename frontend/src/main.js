@@ -19,6 +19,7 @@ import Menu from 'primevue/menu'
 import Password from 'primevue/password'
 import Popover from 'primevue/popover'
 import Select from 'primevue/select'
+import SelectButton from 'primevue/selectbutton'
 import Skeleton from 'primevue/skeleton'
 import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
@@ -73,6 +74,7 @@ createApp(App)
   .component('PPassword', Password)
   .component('PPopover', Popover)
   .component('PSelect', Select)
+  .component('PSelectButton', SelectButton)
   .component('PSkeleton', Skeleton)
   .component('PTag', Tag)
   .component('PTextarea', Textarea)

@@ -104,9 +104,14 @@ Nessun worker parallelo: tutto il resto dipende da qui.
       export/users scoped. Tutto verde.
 **Deliverable:** backend completamente isolato per cassa. ✅
 
-> 🔧 **Sotto-task aperto (FASE 2b):** portare la suite `backend/tests/*` (13 file) al
-> nuovo modello — costruiscono `User(role=, branch=)` e chiamano le funzioni router con
-> le vecchie firme. Lavoro meccanico ma voluminoso. Da fare prima del merge/deploy.
+> ✅ **Test di integrazione aggiunti:** `tests/conftest.py` (Postgres docker, DB di
+> test dedicato, sessione transazionale, TestClient, factory) + `tests/test_multitenant.py`
+> (19 test HTTP su scope/isolamento/ruoli/gestione). `pytest` → 22 passed.
+>
+> 🔧 **Sotto-task residuo (FASE 2b):** i 13 file di test legacy pre-multitenant sono
+> esclusi dalla collection (`collect_ignore` in conftest) perche' costruiscono
+> `User(role=, branch=)` e chiamano le vecchie firme dei router. Vanno portati o
+> rimpiazzati riusando le fixture di conftest.
 
 ### FASE 3 — Gestione gruppo/utenti/casse (backend) ✅ FATTA
 - [x] users.py: scope al gruppo dell'admin; CRUD utenti + sync memberships

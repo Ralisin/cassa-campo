@@ -41,8 +41,16 @@ I dati restano nel volume Docker `postgres_data`. Per eliminarli completamente:
 docker compose down --volumes
 ```
 
-Per creare il primo admin:
+Per creare il primo admin (esegue il bootstrap di gruppo + cassa + membership
+admin a partire dal dominio dell'email):
 
 ```bash
-python -m app.create_admin admin@example.it "Nome Admin" "password-sicura" "Gruppo"
+python -m app.create_admin admin@example.it "Nome Admin" "password-sicura" "E/G"
 ```
+
+## Multi-tenancy
+
+Ogni gruppo (tenant, ricavato dal dominio email) ha una cassa per unità. I dati
+sono isolati per `cassa_id` e ogni richiesta deve indicare la cassa attiva con
+l'header `X-Cassa-Id`; il ruolo (admin/cashier/user) è definito per cassa
+tramite le membership. Dettagli in `../cassa-campo.md`.

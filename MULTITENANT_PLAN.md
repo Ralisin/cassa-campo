@@ -146,9 +146,13 @@ Nessun worker parallelo: tutto il resto dipende da qui.
 > login → portale (E/G admin, L/C cassiere) → dashboard scoped → tab Utenti per admin →
 > editor memberships → form movimento con unità read-only. Tutto OK.
 
-### FASE 6 — Rifinitura (parziale)
-- [ ] Aggiornare `cassa-campo.md` (architettura) e README.
-- [x] Test end-to-end manuali con utente multi-cassa (vedi sopra). Manca prova con 2 gruppi nella UI.
+### FASE 6 — Rifinitura ✅ FATTA
+- [x] Aggiornato `cassa-campo.md` (multi-tenancy, ruoli per cassa, header
+      `X-Cassa-Id`, /auth/me con memberships, endpoint /casse e /users con
+      memberships, schema DB: groups/casse/memberships + cassa_id) e
+      `backend/README.md` (bootstrap gruppo + nota multi-tenancy).
+- [x] Test end-to-end manuali con utente multi-cassa (login → portale → dashboard
+      → utenti → form). Prova con 2 gruppi distinti nella UI: opzionale, rimandata.
 - [x] offlineQueue registra e rispetta la cassa attiva.
 
 ---

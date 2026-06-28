@@ -151,15 +151,43 @@ Restituisce:
 
 * id utente
 * nome
-* ruolo
-* branca di appartenenza
+* email
+* gruppo di appartenenza
+* lista delle membership: per ogni cassa accessibile `cassa_id`, `unità`,
+  `ruolo`, `gruppo`
 
-Ogni profilo deve essere associato obbligatoriamente a una branca.
-I profili preesistenti senza branca vengono migrati sulla branca `E/G`.
+Ogni profilo appartiene a un gruppo (tenant) ed è collegato a una o più casse
+tramite le membership. Il ruolo è definito per singola cassa.
+
+## Contesto cassa
+
+Tutte le richieste sui dati di una cassa devono includere l'header
+`X-Cassa-Id` con l'id della cassa attiva. Il backend verifica che l'utente
+abbia una membership su quella cassa e ne ricava il ruolo effettivo. Senza
+header valido la richiesta è rifiutata (400/403).
+
+Il frontend, dopo il login, mostra un portale di scelta cassa quando l'utente
+ha più di una membership; con una sola cassa la selezione è automatica.
 
 ---
 
+# Multi-tenancy
+
+Ogni **gruppo** è un tenant, identificato dal dominio dell'email
+(`massimo@roma108.it` → gruppo `roma108`, dominio `roma108.it`). All'interno di
+un gruppo ogni **unità** (L/C, E/G, R/S, CoCa, Gruppo) ha la propria **cassa**:
+un contenitore isolato di movimenti, saldi, impostazioni, giroconti, rimborsi e
+ricevute. L'isolamento è garantito da una colonna `cassa_id` su ogni riga e dal
+filtro sempre applicato lato backend.
+
+Un utente può avere più membership, anche con ruoli diversi su casse diverse
+(es. admin della cassa E/G e cassiere della cassa L/C).
+
 # Ruoli
+
+I ruoli si applicano alla **singola cassa** (sono definiti sulla membership, non
+sull'utente). Un'azione è autorizzata in base al ruolo dell'utente sulla cassa
+indicata dall'header `X-Cassa-Id`.
 
 ## Admin
 
@@ -174,12 +202,15 @@ Permessi:
 * eliminare movimenti
 * esportare Excel
 * impostare il saldo iniziale dei contanti e della carta
-* gestire gli utenti: registrarli, modificarne nome, email, ruolo, branca e password
-* visualizzare e filtrare tutti i rimborsi
+* gestire gli utenti del proprio gruppo: registrarli, modificarne nome, email,
+  password e le membership (assegnazione di casse e ruoli)
+* creare le casse del proprio gruppo (anche on-demand assegnando una membership)
+* visualizzare e filtrare tutti i rimborsi della cassa
 * segnare un rimborso come completato o riportarlo allo stato da rimborsare
 
-La gestione utenti è disponibile esclusivamente agli admin. Il sistema non
-permette di rimuovere il ruolo all'ultimo admin rimasto.
+La gestione utenti è disponibile agli admin ed è limitata al proprio gruppo
+(l'email di un nuovo utente deve appartenere al dominio del gruppo). Il sistema
+non permette di rimuovere il ruolo all'ultimo admin rimasto di una cassa.
 
 ---
 
@@ -190,9 +221,8 @@ Permessi:
 * visualizzare lo stato della cassa
 * visualizzare la lista globale dei movimenti e il dettaglio di ogni movimento
 * visualizzare il riepilogo completo
-* creare movimenti
+* creare movimenti sulla cassa attiva
 * modificare esclusivamente i propri movimenti
-* inserire movimenti esclusivamente per la branca associata al proprio profilo
 * visualizzare e filtrare i propri rimborsi e il totale ancora dovuto
 
 Non può:
@@ -296,10 +326,9 @@ Valori:
 * CoCa
 * Gruppo
 
-Il valore viene preselezionato dalla branca associata al profilo. Per gli
-utenti con ruolo `user` non è modificabile; gli admin possono selezionare una
-branca diversa. Il backend forza sempre la branca del profilo per gli utenti
-non admin.
+L'unità non è più scelta dall'utente: coincide sempre con l'unità della cassa
+attiva (header `X-Cassa-Id`). Il frontend la mostra in sola lettura e il backend
+la forza comunque al valore della cassa.
 
 ### Importo
 
@@ -369,7 +398,7 @@ Genera e restituisce il file Excel.
 
 ## Utenti
 
-Endpoint riservati agli admin:
+Endpoint riservati agli admin, limitati al proprio gruppo:
 
 GET /users
 
@@ -377,8 +406,24 @@ POST /users
 
 PUT /users/{id}
 
+Il corpo di creazione/modifica include `name`, `email`, `password` e
+`memberships` (lista di `{ unit, role }`, almeno una). Le casse vengono create
+on-demand quando si assegna una membership su un'unità non ancora presente.
+
 La password è obbligatoria durante la registrazione e facoltativa durante la
 modifica. Se omessa durante la modifica, quella esistente viene mantenuta.
+
+## Casse
+
+Endpoint riservati agli admin del gruppo:
+
+GET /casse
+
+Restituisce le casse del gruppo.
+
+POST /casse
+
+Crea una cassa per un'unità del gruppo.
 
 ---
 
@@ -423,6 +468,42 @@ Attendere qualche secondo.
 
 # Database
 
+## groups
+
+Tenant. Identificato dal dominio email.
+
+```sql
+id uuid primary key
+
+slug text unique
+
+name text
+
+email_domain text unique
+
+created_at timestamptz
+```
+
+---
+
+## casse
+
+Una cassa per coppia (gruppo, unità).
+
+```sql
+id uuid primary key
+
+group_id uuid references groups(id) on delete cascade
+
+unit text
+
+created_at timestamptz
+
+unique (group_id, unit)
+```
+
+---
+
 ## users
 
 ```sql
@@ -434,11 +515,31 @@ password_hash text
 
 name text
 
-role text
-
-branch text not null
+group_id uuid not null references groups(id)
 
 created_at timestamptz
+```
+
+Ruolo e unità non sono più sull'utente: vivono sulle membership.
+
+---
+
+## memberships
+
+Collega un utente a una cassa con un ruolo.
+
+```sql
+id uuid primary key
+
+user_id uuid references users(id) on delete cascade
+
+cassa_id uuid references casse(id) on delete cascade
+
+role text
+
+created_at timestamptz
+
+unique (user_id, cassa_id)
 ```
 
 ---
@@ -447,6 +548,8 @@ created_at timestamptz
 
 ```sql
 id uuid primary key
+
+cassa_id uuid not null references casse(id) on delete cascade
 
 camp_year integer
 
@@ -471,6 +574,8 @@ created_at timestamptz
 
 ```sql
 id uuid primary key
+
+cassa_id uuid not null references casse(id) on delete cascade
 
 created_at timestamptz
 

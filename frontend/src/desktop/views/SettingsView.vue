@@ -1,11 +1,9 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
 
 import { api } from '@/api'
 import PageHeader from '@/desktop/components/PageHeader.vue'
 
-const router = useRouter()
 const saving = ref(false)
 const loading = ref(true)
 const error = ref('')
@@ -59,7 +57,6 @@ onMounted(load)
   <div>
     <PageHeader title="Impostazioni" subtitle="Dati del campo, saldi iniziali e preventivi">
       <template #actions>
-        <PButton label="Riepilogo" icon="pi pi-chart-pie" outlined @click="router.push('/riepilogo')" />
         <PButton label="Salva" icon="pi pi-check" class="dk-topbar__cta" :loading="saving" @click="save" />
       </template>
     </PageHeader>

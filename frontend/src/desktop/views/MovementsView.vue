@@ -1,20 +1,18 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 
-import { api, downloadExcel } from '@/api'
+import { api } from '@/api'
 import { usePolling } from '@/composables/usePolling'
 import MovementsTable from '@/desktop/components/MovementsTable.vue'
 import PageHeader from '@/desktop/components/PageHeader.vue'
 
 const route = useRoute()
-const router = useRouter()
 const movements = ref([])
 const creatorOptions = ref([])
 const nextCursor = ref(null)
 const total = ref(0)
 const loading = ref(false)
-const exporting = ref(false)
 
 const query = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const type = ref('tutti')
@@ -115,15 +113,6 @@ function resetFilters() {
   reimbursement.value = 'tutti'
 }
 
-async function exportReport() {
-  exporting.value = true
-  try {
-    await downloadExcel()
-  } finally {
-    exporting.value = false
-  }
-}
-
 watch([type, method, creator, reimbursement], loadFirstPage)
 watch(query, () => {
   window.clearTimeout(searchTimer)
@@ -142,12 +131,7 @@ usePolling(refreshFirstPage)
 
 <template>
   <div>
-    <PageHeader title="Movimenti" :subtitle="`${total} ${total === 1 ? 'movimento registrato' : 'movimenti registrati'}`">
-      <template #actions>
-        <PButton label="Esporta Excel" icon="pi pi-file-excel" outlined :loading="exporting" @click="exportReport" />
-        <PButton label="Nuovo movimento" icon="pi pi-plus" class="dk-topbar__cta" @click="router.push('/movimenti/nuovo')" />
-      </template>
-    </PageHeader>
+    <PageHeader title="Movimenti" :subtitle="`${total} ${total === 1 ? 'movimento registrato' : 'movimenti registrati'}`" />
 
     <div class="dk-card">
       <div class="dk-toolbar">

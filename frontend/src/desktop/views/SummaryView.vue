@@ -1,7 +1,6 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
-import { useRouter } from 'vue-router'
 
 import { api, downloadExcel } from '@/api'
 import { usePolling } from '@/composables/usePolling'
@@ -11,7 +10,6 @@ import PageHeader from '@/desktop/components/PageHeader.vue'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
-const router = useRouter()
 const confirm = useConfirm()
 const dashboard = ref(null)
 const transfers = ref([])
@@ -172,7 +170,6 @@ usePolling(loadSummary)
   <div>
     <PageHeader title="Riepilogo campo" subtitle="Bilancio, preventivi e giroconti">
       <template #actions>
-        <PButton v-if="session.isOperator" label="Impostazioni" icon="pi pi-sliders-h" outlined @click="router.push('/impostazioni')" />
         <PButton v-if="session.isOperator" label="Esporta Excel" icon="pi pi-file-excel" class="dk-topbar__cta" :loading="exportingReport" @click="exportReport" />
       </template>
     </PageHeader>

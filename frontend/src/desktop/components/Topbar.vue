@@ -63,13 +63,6 @@ async function openNotification(notification) {
     </div>
 
     <div class="dk-topbar__actions">
-      <form class="dk-topbar__search" @submit.prevent="submitSearch">
-        <PIconField>
-          <PInputIcon class="pi pi-search" />
-          <PInputText v-model="search" placeholder="Cerca movimenti…" />
-        </PIconField>
-      </form>
-
       <div class="dk-topbar__bell">
         <PButton icon="pi pi-bell" text rounded aria-label="Notifiche" @click="toggleNotifications" />
         <span v-if="unreadCount" class="dk-topbar__bell-badge">{{ notificationCountLabel }}</span>

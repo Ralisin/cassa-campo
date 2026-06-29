@@ -8,6 +8,7 @@ import ChartCard from '@/desktop/components/ChartCard.vue'
 import KpiCard from '@/desktop/components/KpiCard.vue'
 import MovementsTable from '@/desktop/components/MovementsTable.vue'
 import PageHeader from '@/desktop/components/PageHeader.vue'
+import RollingNumber from '@/desktop/components/RollingNumber.vue'
 
 const router = useRouter()
 const dashboard = ref(null)
@@ -53,24 +54,72 @@ const categoryRows = computed(() => (dashboard.value?.category_summaries ?? []).
 }))
 
 const hasCategoryData = computed(() => categoryRows.value.some((row) => row.spent > 0 || row.budget > 0))
-const categoryChart = computed(() => {
-  const rows = categoryRows.value.filter((row) => row.spent > 0)
+// Slices with spend, used both for the doughnut and the centre overlay.
+const donutRows = computed(() => categoryRows.value.filter((row) => row.spent > 0))
+const donutTotals = computed(() => {
+  const totalSpent = donutRows.value.reduce((sum, row) => sum + row.spent, 0)
+  const totalBudget = categoryRows.value.reduce((sum, row) => sum + row.budget, 0)
+  const pct = totalBudget > 0 ? Math.round((totalSpent / totalBudget) * 100) : null
+  return { totalSpent, totalBudget, pct }
+})
+
+// Which slice the pointer is over (null = none → overall figure in the centre).
+const hoverIndex = ref(null)
+// Centre of the drawn doughnut, reported by the tracker plugin so the HTML
+// overlay can sit exactly in the hole.
+const centerPos = ref({ x: 0, y: 0 })
+
+const centerData = computed(() => {
+  const row = hoverIndex.value != null ? donutRows.value[hoverIndex.value] : null
+  if (row) {
+    let sub = 'nessun budget'
+    let over = false
+    if (row.budget > 0) {
+      const diff = row.budget - row.spent
+      over = diff < 0
+      sub = over ? `sforato ${euroShort.format(-diff)}` : `restano ${euroShort.format(diff)}`
+    }
+    return { label: row.label.toUpperCase(), value: euroShort.format(row.spent), sub, over }
+  }
+  const { totalSpent, totalBudget, pct } = donutTotals.value
   return {
-    data: {
-      labels: rows.map((row) => row.label),
-      datasets: [{ data: rows.map((row) => row.spent), backgroundColor: rows.map((_, i) => CATEGORY_COLORS[i % CATEGORY_COLORS.length]), borderWidth: 0 }],
-    },
-    options: {
-      cutout: '62%',
-      plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14, font: { size: 12 } } },
-        tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${euro.format(ctx.parsed)}` } },
-      },
-      responsive: true,
-      maintainAspectRatio: false,
-    },
+    label: 'SPESO',
+    value: euroShort.format(totalSpent),
+    sub: pct === null ? 'budget non impostato' : `${pct}% del budget`,
+    over: pct !== null && totalSpent > totalBudget,
   }
 })
+
+const categoryChart = computed(() => ({
+  data: {
+    labels: donutRows.value.map((row) => row.label),
+    datasets: [{ data: donutRows.value.map((row) => row.spent), backgroundColor: donutRows.value.map((_, i) => CATEGORY_COLORS[i % CATEGORY_COLORS.length]), borderWidth: 0, hoverOffset: 6 }],
+  },
+  options: {
+    cutout: '64%',
+    layout: { padding: { top: 4 } },
+    // Hover drives the centre overlay instead of a tooltip.
+    onHover: (event, elements) => { hoverIndex.value = elements.length ? elements[0].index : null },
+    plugins: {
+      legend: { position: 'bottom', labels: { boxWidth: 12, padding: 14, font: { size: 12 } } },
+      tooltip: { enabled: false },
+    },
+    responsive: true,
+    maintainAspectRatio: false,
+  },
+}))
+
+// Keeps the overlay aligned with the doughnut hole (which sits above the legend).
+const donutCenterTracker = {
+  id: 'donutCenterTracker',
+  afterDraw(chart) {
+    const a = chart.chartArea
+    if (!a) return
+    const x = Math.round((a.left + a.right) / 2)
+    const y = Math.round((a.top + a.bottom) / 2)
+    if (centerPos.value.x !== x || centerPos.value.y !== y) centerPos.value = { x, y }
+  },
+}
 
 // Spese giornaliere derivate dai movimenti recenti (ultimi 14 giorni con uscite).
 const trend = computed(() => {
@@ -140,12 +189,7 @@ usePolling(loadMovements, 12000)
 
 <template>
   <div>
-    <PageHeader title="Dashboard" subtitle="Panoramica economica del campo in tempo reale">
-      <template #actions>
-        <PButton label="Riepilogo" icon="pi pi-chart-pie" outlined @click="router.push('/riepilogo')" />
-        <PButton label="Nuovo movimento" icon="pi pi-plus" class="dk-topbar__cta" @click="router.push('/movimenti/nuovo')" />
-      </template>
-    </PageHeader>
+    <PageHeader title="Dashboard" subtitle="Panoramica economica del campo in tempo reale" />
 
     <template v-if="dashboard">
       <div class="dk-grid dk-grid--kpi">
@@ -186,8 +230,13 @@ usePolling(loadMovements, 12000)
             :empty="!categoryChart.data.labels.length"
             empty-text="Nessuna spesa categorizzata"
           >
-            <div style="height: 260px">
-              <PChart type="doughnut" :data="categoryChart.data" :options="categoryChart.options" />
+            <div class="dk-donut" style="height: 260px">
+              <PChart type="doughnut" :data="categoryChart.data" :options="categoryChart.options" :plugins="[donutCenterTracker]" />
+              <div class="dk-donut__center" :style="{ left: `${centerPos.x}px`, top: `${centerPos.y}px` }">
+                <span class="dk-donut__label">{{ centerData.label }}</span>
+                <RollingNumber class="dk-donut__value" :value="centerData.value" />
+                <span class="dk-donut__sub" :class="{ 'dk-donut__sub--over': centerData.over }">{{ centerData.sub }}</span>
+              </div>
             </div>
           </ChartCard>
 

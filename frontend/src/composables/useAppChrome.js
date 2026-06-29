@@ -14,6 +14,10 @@ const unreadCount = ref(0)
 const notificationsLoading = ref(false)
 const pendingReimbursementCount = ref(0)
 const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
+const pushSupported = ref(false)
+const pushEnabled = ref(false)
+const pushBusy = ref(false)
+const pushError = ref('')
 
 // Populated by the root component (App.vue) which owns the SW registration.
 // `needRefresh` is a writable ref the root keeps in sync with useRegisterSW.
@@ -50,6 +54,29 @@ function formatNotificationDate(value) {
   }).format(new Date(value))
 }
 
+function notificationPermission() {
+  if (typeof window === 'undefined' || !('Notification' in window)) return 'unsupported'
+  return window.Notification.permission
+}
+
+function urlBase64ToUint8Array(value) {
+  const padding = '='.repeat((4 - (value.length % 4)) % 4)
+  const base64 = `${value}${padding}`.replace(/-/g, '+').replace(/_/g, '/')
+  const raw = window.atob(base64)
+  return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)))
+}
+
+function subscriptionPayload(subscription) {
+  const json = subscription.toJSON()
+  return {
+    endpoint: json.endpoint,
+    keys: {
+      p256dh: json.keys?.p256dh,
+      auth: json.keys?.auth,
+    },
+  }
+}
+
 export function useAppChrome() {
   const session = useSessionStore()
   const offlineQueue = useOfflineQueue()
@@ -77,6 +104,88 @@ export function useAppChrome() {
     await offlineQueue.syncQueuedMovements(session.user?.id).catch(() => {})
   }
 
+  async function refreshPushState() {
+    pushError.value = ''
+    pushSupported.value = Boolean(
+      typeof window !== 'undefined'
+      && 'Notification' in window
+      && 'serviceWorker' in navigator
+      && 'PushManager' in window,
+    )
+    if (!pushSupported.value || !session.authenticated) {
+      pushEnabled.value = false
+      return
+    }
+    const registration = await navigator.serviceWorker.ready
+    pushEnabled.value = Boolean(await registration.pushManager.getSubscription())
+  }
+
+  async function enablePushNotifications() {
+    pushBusy.value = true
+    pushError.value = ''
+    try {
+      await refreshPushState()
+      if (!pushSupported.value) {
+        pushError.value = 'Notifiche push non supportate su questo dispositivo.'
+        return false
+      }
+      const { public_key: publicKey } = await api.get('/notifications/push-public-key')
+      if (!publicKey) {
+        pushError.value = 'Notifiche push non configurate sul server.'
+        return false
+      }
+      if (notificationPermission() === 'denied') {
+        pushError.value = 'Permesso notifiche negato nelle impostazioni del dispositivo.'
+        return false
+      }
+      const permission = notificationPermission() === 'granted'
+        ? 'granted'
+        : await window.Notification.requestPermission()
+      if (permission !== 'granted') {
+        pushError.value = 'Permesso notifiche non concesso.'
+        return false
+      }
+
+      const registration = await navigator.serviceWorker.ready
+      let subscription = await registration.pushManager.getSubscription()
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey),
+        })
+      }
+      await api.post('/notifications/push-subscriptions', subscriptionPayload(subscription))
+      pushEnabled.value = true
+      return true
+    } catch (cause) {
+      pushError.value = cause instanceof Error ? cause.message : 'Attivazione notifiche non riuscita'
+      return false
+    } finally {
+      pushBusy.value = false
+    }
+  }
+
+  async function disablePushNotifications() {
+    pushBusy.value = true
+    pushError.value = ''
+    try {
+      if (!pushSupported.value) return false
+      const registration = await navigator.serviceWorker.ready
+      const subscription = await registration.pushManager.getSubscription()
+      if (subscription) {
+        await api.post('/notifications/push-unsubscribe', subscriptionPayload(subscription)).catch(() => {})
+        await subscription.unsubscribe()
+      }
+      pushEnabled.value = false
+      return true
+    } catch (cause) {
+      pushError.value = cause instanceof Error ? cause.message : 'Disattivazione notifiche non riuscita'
+      return false
+    } finally {
+      pushBusy.value = false
+    }
+  }
+
   async function markAllRead() {
     await api.put('/notifications/read-all')
     await loadNotifications()
@@ -101,6 +210,10 @@ export function useAppChrome() {
     notificationsLoading,
     pendingReimbursementCount,
     online,
+    pushSupported,
+    pushEnabled,
+    pushBusy,
+    pushError,
     needRefresh,
     offlineQueue,
     // labels / helpers
@@ -112,6 +225,9 @@ export function useAppChrome() {
     loadNotifications,
     loadReimbursementCount,
     syncOfflineQueue,
+    refreshPushState,
+    enablePushNotifications,
+    disablePushNotifications,
     markAllRead,
     openNotification,
     updateApp,

@@ -7,6 +7,7 @@ import MovementCard from '@/_UI/components/MovementCard.vue'
 import MovementCardSkeleton from '@/_UI/components/MovementCardSkeleton.vue'
 
 const dashboard = ref(null)
+const error = ref('')
 const router = useRouter()
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const cashCards = computed(() => dashboard.value ? [
@@ -15,7 +16,12 @@ const cashCards = computed(() => dashboard.value ? [
 ] : [])
 
 async function loadDashboard() {
-  dashboard.value = await api.get('/dashboard')
+  error.value = ''
+  try {
+    dashboard.value = await api.get('/dashboard')
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Caricamento dashboard non riuscito'
+  }
 }
 
 onMounted(loadDashboard)
@@ -30,6 +36,27 @@ usePolling(loadDashboard)
         <template #list="{ items }"><div class="grid grid-cols-2 gap-3"><PCard v-for="item in items" :key="item.label" class="home-balance-card"><template #content><div class="flex flex-col gap-3"><PAvatar :icon="item.icon" size="large" shape="square" :class="item.severity === 'success' ? '!bg-emerald-50 !text-emerald-700' : '!bg-blue-50 !text-blue-700'" /><div><p class="text-xs font-bold text-slate-500">{{ item.label }}</p><p class="mt-1 text-lg font-black" :class="item.severity === 'success' ? 'text-emerald-700' : 'text-blue-700'">{{ euro.format(Number(item.value)) }}</p></div></div></template></PCard></div></template>
       </PDataView>
       <PButton label="Nuovo movimento" icon="pi pi-plus" size="large" fluid raised class="primary-cta !mt-4" @click="router.push('/movimenti/nuovo')" />
+    </section>
+
+    <section v-if="dashboard.anomalies?.length">
+      <h2 class="section-title mb-2.5">Da controllare</h2>
+      <div class="space-y-2">
+        <button
+          v-for="item in dashboard.anomalies"
+          :key="item.kind"
+          type="button"
+          class="dashboard-anomaly"
+          :class="`dashboard-anomaly--${item.severity}`"
+          @click="item.target && router.push(item.target)"
+        >
+          <span class="dashboard-anomaly__icon"><i class="pi pi-exclamation-triangle" /></span>
+          <span class="min-w-0 flex-1 text-left">
+            <strong>{{ item.title }}</strong>
+            <small>{{ item.message }}</small>
+          </span>
+          <i v-if="item.target" class="pi pi-chevron-right text-xs text-slate-400" />
+        </button>
+      </div>
     </section>
 
     <section>
@@ -49,7 +76,7 @@ usePolling(loadDashboard)
       </PCard>
     </section>
   </main>
-  <main v-else class="space-y-6">
+  <main v-else-if="!error" class="space-y-6">
     <section>
       <Skel w="7rem" h="0.95rem" class="mb-2.5" />
       <div class="grid grid-cols-2 gap-3">
@@ -68,5 +95,17 @@ usePolling(loadDashboard)
       <Skel w="9rem" h="0.95rem" class="mb-2.5" />
       <div class="space-y-2"><MovementCardSkeleton v-for="n in 3" :key="n" /></div>
     </section>
+  </main>
+  <main v-else>
+    <PCard class="movements-empty">
+      <template #content>
+        <div class="grid place-items-center py-8 text-center">
+          <PAvatar icon="pi pi-exclamation-triangle" size="xlarge" shape="circle" class="!bg-red-50 !text-red-600" />
+          <h2 class="mt-4 text-base font-black text-slate-800">Dashboard non disponibile</h2>
+          <p class="mt-1 max-w-xs text-sm text-slate-500">{{ error }}</p>
+          <PButton label="Riprova" icon="pi pi-refresh" class="primary-cta mt-5" @click="loadDashboard" />
+        </div>
+      </template>
+    </PCard>
   </main>
 </template>

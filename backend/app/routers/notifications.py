@@ -2,12 +2,19 @@ import uuid
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query, Response, status
+from fastapi import APIRouter, Header, HTTPException, Query, Response, status
 from sqlalchemy import func, select, update
 
+from app.core.config import settings
 from app.dependencies import CurrentMembership, CurrentUser, DbSession
-from app.models import Movement, Notification
-from app.schemas import NotificationList, NotificationRead
+from app.models import Movement, Notification, PushSubscription
+from app.schemas import (
+    NotificationList,
+    NotificationRead,
+    PushPublicKey,
+    PushSubscriptionInput,
+    PushSubscriptionStatus,
+)
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -38,6 +45,50 @@ def list_notifications(
         )
     ) or 0
     return NotificationList(items=list(items), unread_count=unread_count)
+
+
+@router.get("/push-public-key", response_model=PushPublicKey)
+def get_push_public_key(_: CurrentUser) -> PushPublicKey:
+    return PushPublicKey(public_key=settings.vapid_public_key)
+
+
+@router.post("/push-subscriptions", response_model=PushSubscriptionStatus)
+def save_push_subscription(
+    data: PushSubscriptionInput,
+    db: DbSession,
+    user: CurrentUser,
+    user_agent: str | None = Header(default=None, alias="User-Agent"),
+) -> PushSubscriptionStatus:
+    subscription = db.scalar(
+        select(PushSubscription).where(PushSubscription.endpoint == data.endpoint)
+    )
+    if subscription is None:
+        subscription = PushSubscription(user_id=user.id, endpoint=data.endpoint)
+        db.add(subscription)
+    subscription.user_id = user.id
+    subscription.p256dh = data.keys.p256dh
+    subscription.auth = data.keys.auth
+    subscription.user_agent = user_agent
+    db.commit()
+    return PushSubscriptionStatus(enabled=True)
+
+
+@router.post("/push-unsubscribe", response_model=PushSubscriptionStatus)
+def remove_push_subscription(
+    data: PushSubscriptionInput,
+    db: DbSession,
+    user: CurrentUser,
+) -> PushSubscriptionStatus:
+    subscription = db.scalar(
+        select(PushSubscription).where(
+            PushSubscription.endpoint == data.endpoint,
+            PushSubscription.user_id == user.id,
+        )
+    )
+    if subscription is not None:
+        db.delete(subscription)
+        db.commit()
+    return PushSubscriptionStatus(enabled=False)
 
 
 @router.put("/read-all", status_code=status.HTTP_204_NO_CONTENT)

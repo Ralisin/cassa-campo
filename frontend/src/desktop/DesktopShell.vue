@@ -11,9 +11,11 @@ const {
   online,
   needRefresh,
   offlineQueue,
+  pushError,
   loadNotifications,
   loadReimbursementCount,
   syncOfflineQueue,
+  refreshPushState,
   updateApp,
 } = chrome
 
@@ -26,6 +28,7 @@ function toggleSidebar() {
 }
 
 onMounted(async () => {
+  await refreshPushState().catch(() => {})
   await loadNotifications().catch(() => {})
   await loadReimbursementCount().catch(() => {})
 })
@@ -76,6 +79,7 @@ usePolling(syncOfflineQueue, 20000)
             @click="syncOfflineQueue"
           />
         </div>
+        <PMessage v-if="pushError" severity="warn" size="small" class="mb-3">{{ pushError }}</PMessage>
 
         <RouterView name="desktop" v-slot="{ Component }">
           <Transition name="dk-fade" mode="out-in">

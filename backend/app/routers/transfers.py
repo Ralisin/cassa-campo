@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
+from app.audit_service import write_audit
 from app.dependencies import CurrentCassa, DbSession, WritableOperatorMembership
 from app.models import Cassa, TransferType, TreasuryTransfer
 from app.schemas import TransferInput, TransferRead
@@ -91,6 +92,17 @@ def create_transfer(
     transfer = TreasuryTransfer(created_by=operator.user_id, cassa_id=cassa.id)
     apply_transfer_input(transfer, data)
     db.add(transfer)
+    db.flush()
+    write_audit(
+        db,
+        action="transfer_created",
+        entity_type="transfer",
+        entity_id=transfer.id,
+        cassa_id=cassa.id,
+        user_id=operator.user_id,
+        summary=f"Creato giroconto {transfer.notes}",
+        details={"type": transfer.type.value, "amount": str(transfer.amount)},
+    )
     db.commit()
     db.refresh(transfer)
     return transfer_to_read(get_transfer_or_404(db, transfer.id, cassa.id))
@@ -104,6 +116,16 @@ def update_transfer(
     transfer = get_transfer_or_404(db, transfer_id, cassa.id)
     validate_available_balance(data, db, cassa, existing=transfer)
     apply_transfer_input(transfer, data)
+    write_audit(
+        db,
+        action="transfer_updated",
+        entity_type="transfer",
+        entity_id=transfer.id,
+        cassa_id=cassa.id,
+        user_id=operator.user_id,
+        summary=f"Modificato giroconto {transfer.notes}",
+        details={"type": transfer.type.value, "amount": str(transfer.amount)},
+    )
     db.commit()
     return transfer_to_read(get_transfer_or_404(db, transfer.id, cassa.id))
 
@@ -113,6 +135,16 @@ def delete_transfer(
     transfer_id: uuid.UUID, db: DbSession, operator: WritableOperatorMembership
 ) -> Response:
     transfer = get_transfer_or_404(db, transfer_id, operator.cassa_id)
+    write_audit(
+        db,
+        action="transfer_deleted",
+        entity_type="transfer",
+        entity_id=transfer.id,
+        cassa_id=operator.cassa_id,
+        user_id=operator.user_id,
+        summary=f"Eliminato giroconto {transfer.notes}",
+        details={"type": transfer.type.value, "amount": str(transfer.amount)},
+    )
     db.delete(transfer)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

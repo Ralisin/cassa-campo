@@ -11,6 +11,10 @@ const creatorOptions = ref([])
 const nextCursor = ref(null)
 const total = ref(0)
 const loading = ref(false)
+const error = ref('')
+const trashOpen = ref(false)
+const trashLoading = ref(false)
+const deletedMovements = ref([])
 const loadMoreSentinel = ref(null)
 const router = useRouter()
 const query = ref('')
@@ -19,7 +23,7 @@ const method = ref('tutti')
 const creator = ref('tutti')
 const reimbursement = ref('tutti')
 const collapsedDates = ref(new Set())
-const filtersCollapsed = ref(false)
+const filtersCollapsed = ref(true)
 const filters = [
   { label: 'Tutti', value: 'tutti', icon: 'pi pi-list' },
   { label: 'Entrate', value: 'entrata', icon: 'pi pi-arrow-down-left' },
@@ -41,6 +45,7 @@ const dateFormatter = new Intl.DateTimeFormat('it-IT', {
   day: 'numeric',
   month: 'short',
 })
+const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const creators = computed(() => [
   { label: 'Tutti gli utenti', value: 'tutti' },
   ...creatorOptions.value.map((item) => ({ label: item.name, value: item.id })),
@@ -83,6 +88,7 @@ function movementsPath(cursor = null) {
 async function loadFirstPage() {
   const version = ++requestVersion
   loading.value = true
+  error.value = ''
   try {
     const page = await api.get(movementsPath())
     if (version !== requestVersion) return
@@ -90,6 +96,9 @@ async function loadFirstPage() {
     creatorOptions.value = page.creators
     nextCursor.value = page.next_cursor
     total.value = page.total
+  } catch (cause) {
+    if (version !== requestVersion) return
+    error.value = cause instanceof Error ? cause.message : 'Caricamento movimenti non riuscito'
   } finally {
     if (version === requestVersion) {
       loading.value = false
@@ -102,12 +111,16 @@ async function loadMore() {
   if (!nextCursor.value || loading.value) return
   const version = requestVersion
   loading.value = true
+  error.value = ''
   try {
     const page = await api.get(movementsPath(nextCursor.value))
     if (version !== requestVersion) return
     movements.value = [...movements.value, ...page.items]
     nextCursor.value = page.next_cursor
     total.value = page.total
+  } catch (cause) {
+    if (version !== requestVersion) return
+    error.value = cause instanceof Error ? cause.message : 'Caricamento altri movimenti non riuscito'
   } finally {
     if (version === requestVersion) {
       loading.value = false
@@ -159,6 +172,22 @@ function resetFilters() {
   reimbursement.value = 'tutti'
 }
 
+async function openTrash() {
+  trashOpen.value = true
+  trashLoading.value = true
+  try {
+    deletedMovements.value = await api.get('/movements/deleted')
+  } finally {
+    trashLoading.value = false
+  }
+}
+
+async function restoreMovement(movement) {
+  await api.put(`/movements/${movement.id}/restore`, {})
+  deletedMovements.value = deletedMovements.value.filter((item) => item.id !== movement.id)
+  await loadFirstPage()
+}
+
 function toggleDate(date) {
   const next = new Set(collapsedDates.value)
   if (next.has(date)) next.delete(date)
@@ -193,6 +222,7 @@ function formatDate(date) {
           <span>{{ activeFilters }} {{ activeFilters === 1 ? 'filtro attivo' : 'filtri attivi' }}</span>
           <PButton label="Azzera" icon="pi pi-filter-slash" size="small" text class="movement-filters-clear__button" @click="resetFilters" />
         </div>
+        <PButton label="Cestino" icon="pi pi-trash" size="small" text class="movement-filters-clear__button mt-2" @click="openTrash" />
 
         <Transition name="movement-group">
           <div v-if="!filtersCollapsed" class="movement-group-content">
@@ -235,6 +265,11 @@ function formatDate(date) {
         </Transition>
       </template>
     </PCard>
+
+    <PMessage v-if="error" severity="error" size="small">
+      {{ error }}
+      <PButton label="Riprova" icon="pi pi-refresh" size="small" text class="movement-inline-retry" @click="loadFirstPage" />
+    </PMessage>
 
     <div v-if="loading && !movements.length" class="space-y-4" aria-hidden="true">
       <section v-for="group in 2" :key="group">
@@ -279,7 +314,7 @@ function formatDate(date) {
       <i v-if="loading && movements.length" class="pi pi-spin pi-spinner text-xl text-forest" aria-hidden="true" />
       <span v-if="loading && movements.length" class="sr-only">Caricamento altri movimenti</span>
     </div>
-    <PCard v-if="!loading && !movements.length" class="movements-empty">
+    <PCard v-if="!loading && !error && !movements.length" class="movements-empty">
       <template #content>
         <div class="grid place-items-center py-8 text-center">
           <PAvatar icon="pi pi-receipt" size="xlarge" shape="circle" class="!bg-emerald-50 !text-forest" />
@@ -290,5 +325,19 @@ function formatDate(date) {
         </div>
       </template>
     </PCard>
+
+    <PDialog v-model:visible="trashOpen" modal header="Cestino movimenti" class="summary-dialog w-[calc(100vw-2rem)] max-w-md">
+      <div v-if="trashLoading" class="space-y-2"><MovementCardSkeleton v-for="n in 3" :key="n" /></div>
+      <div v-else-if="!deletedMovements.length" class="py-6 text-center text-sm font-semibold text-slate-500">Nessun movimento nel cestino.</div>
+      <div v-else class="space-y-2">
+        <article v-for="movement in deletedMovements" :key="movement.id" class="trash-item">
+          <span class="min-w-0 flex-1">
+            <strong>{{ movement.supplier }}</strong>
+            <small>{{ euro.format(Number(movement.amount)) }} · {{ movement.operation_date }}</small>
+          </span>
+          <PButton label="Ripristina" icon="pi pi-undo" size="small" @click="restoreMovement(movement)" />
+        </article>
+      </div>
+    </PDialog>
   </main>
 </template>

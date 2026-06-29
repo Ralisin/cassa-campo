@@ -12,6 +12,8 @@ const summary = ref(null)
 const statusFilter = ref('da_rimborsare')
 const creatorFilter = ref('tutti')
 const updating = ref(null)
+const actionError = ref('')
+const lastAction = ref(null)
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const statuses = [
   { label: 'Da rimborsare', value: 'da_rimborsare', icon: 'pi pi-clock' },
@@ -40,10 +42,39 @@ async function load() {
 
 async function toggle(movement) {
   updating.value = movement.id
+  actionError.value = ''
+  const previousStatus = movement.reimbursement_status
   try {
     summary.value = await api.put(`/reimbursements/${movement.id}`, {
       reimbursed: movement.reimbursement_status !== 'rimborsato',
     })
+    lastAction.value = {
+      movementId: movement.id,
+      previousStatus,
+      supplier: movement.supplier,
+      message: previousStatus === 'rimborsato'
+        ? 'Rimborso segnato come da fare.'
+        : 'Rimborso segnato come completato.',
+    }
+  } catch (cause) {
+    actionError.value = cause instanceof Error ? cause.message : 'Aggiornamento rimborso non riuscito'
+  } finally {
+    updating.value = null
+  }
+}
+
+async function undoLastAction() {
+  if (!lastAction.value) return
+  const action = lastAction.value
+  updating.value = action.movementId
+  actionError.value = ''
+  try {
+    summary.value = await api.put(`/reimbursements/${action.movementId}`, {
+      reimbursed: action.previousStatus === 'rimborsato',
+    })
+    lastAction.value = null
+  } catch (cause) {
+    actionError.value = cause instanceof Error ? cause.message : 'Annullamento non riuscito'
   } finally {
     updating.value = null
   }
@@ -89,6 +120,12 @@ usePolling(load)
         <PSelect v-if="session.isOperator" v-model="creatorFilter" :options="creators" option-label="label" option-value="value" class="mt-3" fluid />
       </template>
     </PCard>
+
+    <PMessage v-if="actionError" severity="error" size="small">{{ actionError }}</PMessage>
+    <PMessage v-if="lastAction" severity="success" size="small" class="reimbursement-undo">
+      {{ lastAction.message }}
+      <PButton label="Annulla" icon="pi pi-undo" size="small" text class="reimbursement-undo__button" :loading="updating === lastAction.movementId" @click="undoLastAction" />
+    </PMessage>
 
     <section v-if="filtered.length" class="space-y-3">
       <article v-for="movement in filtered" :key="movement.id" class="reimbursement-list-item">

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
+from app.audit_service import write_audit
 from app.dependencies import CurrentUser, DbSession, OperatorMembership, WritableOperatorMembership
 from app.models import Cassa, CassaStatus, Membership, UserRole
 from app.schemas import CassaCreate, CassaRead
@@ -52,6 +53,15 @@ def create_cassa(
         db.add(cassa)
         db.flush()
         db.add(Membership(user_id=user.id, cassa_id=cassa.id, role=operator.role))
+        write_audit(
+            db,
+            action="cassa_created",
+            entity_type="cassa",
+            entity_id=cassa.id,
+            cassa_id=operator.cassa_id,
+            user_id=user.id,
+            summary=f"Creata cassa {cassa.unit} {cassa.kind.value} {cassa.year}",
+        )
         db.commit()
         db.refresh(cassa)
     except IntegrityError as exc:
@@ -77,10 +87,12 @@ def close_cassa(
             select(Membership).where(
                 Membership.user_id == operator.user_id,
                 Membership.cassa_id == cassa.id,
-                Membership.role.in_([UserRole.ADMIN, UserRole.CASHIER]),
             )
         )
-        if target_membership is None:
+        if target_membership is not None and target_membership.role not in (
+            UserRole.ADMIN,
+            UserRole.CASHIER,
+        ):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Admin or cashier role required on this cassa",
@@ -89,6 +101,15 @@ def close_cassa(
         return cassa_to_read(cassa)
     cassa.status = CassaStatus.CLOSED
     cassa.closed_at = date.today()
+    write_audit(
+        db,
+        action="cassa_closed",
+        entity_type="cassa",
+        entity_id=cassa.id,
+        cassa_id=cassa.id,
+        user_id=operator.user_id,
+        summary=f"Chiusa cassa {cassa.unit} {cassa.kind.value} {cassa.year}",
+    )
     db.commit()
     db.refresh(cassa)
     return cassa_to_read(cassa)

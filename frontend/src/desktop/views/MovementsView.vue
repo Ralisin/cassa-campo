@@ -13,6 +13,10 @@ const creatorOptions = ref([])
 const nextCursor = ref(null)
 const total = ref(0)
 const loading = ref(false)
+const error = ref('')
+const trashOpen = ref(false)
+const trashLoading = ref(false)
+const deletedMovements = ref([])
 
 const query = ref(typeof route.query.q === 'string' ? route.query.q : '')
 const type = ref('tutti')
@@ -40,6 +44,7 @@ const creators = computed(() => [
   { label: 'Tutti gli utenti', value: 'tutti' },
   ...creatorOptions.value.map((item) => ({ label: item.name, value: item.id })),
 ])
+const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const activeFilters = computed(() => [
   query.value.trim(),
   type.value !== 'tutti',
@@ -65,6 +70,7 @@ function movementsPath(cursor = null) {
 async function loadFirstPage() {
   const version = ++requestVersion
   loading.value = true
+  error.value = ''
   try {
     const page = await api.get(movementsPath())
     if (version !== requestVersion) return
@@ -72,6 +78,9 @@ async function loadFirstPage() {
     creatorOptions.value = page.creators
     nextCursor.value = page.next_cursor
     total.value = page.total
+  } catch (cause) {
+    if (version !== requestVersion) return
+    error.value = cause instanceof Error ? cause.message : 'Caricamento movimenti non riuscito'
   } finally {
     if (version === requestVersion) loading.value = false
   }
@@ -81,12 +90,16 @@ async function loadMore() {
   if (!nextCursor.value || loading.value) return
   const version = requestVersion
   loading.value = true
+  error.value = ''
   try {
     const page = await api.get(movementsPath(nextCursor.value))
     if (version !== requestVersion) return
     movements.value = [...movements.value, ...page.items]
     nextCursor.value = page.next_cursor
     total.value = page.total
+  } catch (cause) {
+    if (version !== requestVersion) return
+    error.value = cause instanceof Error ? cause.message : 'Caricamento altri movimenti non riuscito'
   } finally {
     if (version === requestVersion) loading.value = false
   }
@@ -111,6 +124,22 @@ function resetFilters() {
   method.value = 'tutti'
   creator.value = 'tutti'
   reimbursement.value = 'tutti'
+}
+
+async function openTrash() {
+  trashOpen.value = true
+  trashLoading.value = true
+  try {
+    deletedMovements.value = await api.get('/movements/deleted')
+  } finally {
+    trashLoading.value = false
+  }
+}
+
+async function restoreMovement(movement) {
+  await api.put(`/movements/${movement.id}/restore`, {})
+  deletedMovements.value = deletedMovements.value.filter((item) => item.id !== movement.id)
+  await loadFirstPage()
 }
 
 watch([type, method, creator, reimbursement], loadFirstPage)
@@ -151,9 +180,16 @@ usePolling(refreshFirstPage)
           class="dk-toolbar__spacer"
           @click="resetFilters"
         />
+        <PButton label="Cestino" icon="pi pi-trash" text @click="openTrash" />
       </div>
 
+      <PMessage v-if="error" severity="error" size="small" class="mb-3">
+        {{ error }}
+        <PButton label="Riprova" icon="pi pi-refresh" size="small" text class="movement-inline-retry" @click="loadFirstPage" />
+      </PMessage>
+
       <MovementsTable
+        v-if="!error"
         :movements="movements"
         :loading="loading && !movements.length"
         show-actions
@@ -174,5 +210,21 @@ usePolling(refreshFirstPage)
         </span>
       </div>
     </div>
+
+    <PDialog v-model:visible="trashOpen" modal header="Cestino movimenti" class="summary-dialog w-[34rem]">
+      <div v-if="trashLoading" class="dk-skel-rows">
+        <div v-for="n in 3" :key="n" class="dk-skel-row"><Skel w="45%" h="0.8rem" /><Skel w="6rem" h="2rem" /></div>
+      </div>
+      <p v-else-if="!deletedMovements.length" class="py-6 text-center text-sm font-semibold text-slate-500">Nessun movimento nel cestino.</p>
+      <div v-else class="space-y-2">
+        <article v-for="movement in deletedMovements" :key="movement.id" class="trash-item">
+          <span class="min-w-0 flex-1">
+            <strong>{{ movement.supplier }}</strong>
+            <small>{{ euro.format(Number(movement.amount)) }} · {{ movement.operation_date }}</small>
+          </span>
+          <PButton label="Ripristina" icon="pi pi-undo" size="small" @click="restoreMovement(movement)" />
+        </article>
+      </div>
+    </PDialog>
   </div>
 </template>

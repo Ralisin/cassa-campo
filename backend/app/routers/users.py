@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
+from app.audit_service import write_audit
 from app.core.security import hash_password
 from app.dependencies import AdminMembership, CurrentUser, DbSession
 from app.models import Cassa, CassaKind, CassaStatus, Group, Membership, User, UserRole
@@ -136,6 +137,16 @@ def create_user(
     )
     db.add(user)
     sync_memberships(db, user, group, data.memberships)
+    db.flush()
+    write_audit(
+        db,
+        action="user_created",
+        entity_type="user",
+        entity_id=user.id,
+        cassa_id=admin_membership.cassa_id,
+        user_id=admin_membership.user_id,
+        summary=f"Creato utente {user.email}",
+    )
     return user_to_read(commit_user(db, user))
 
 
@@ -156,4 +167,14 @@ def update_user(
     if data.password:
         user.password_hash = hash_password(data.password)
     sync_memberships(db, user, group, data.memberships)
+    write_audit(
+        db,
+        action="user_updated",
+        entity_type="user",
+        entity_id=user.id,
+        cassa_id=admin_membership.cassa_id,
+        user_id=admin_membership.user_id,
+        summary=f"Aggiornato utente {user.email}",
+        details={"password_changed": bool(data.password)},
+    )
     return user_to_read(commit_user(db, user))

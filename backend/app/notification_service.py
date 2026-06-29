@@ -4,6 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Membership, Movement, Notification, User, UserRole
+from app.push_service import send_push_for_notifications
 
 
 def format_amount(amount: Decimal) -> str:
@@ -40,30 +41,32 @@ def notify_admins_of_movement(
         if reimbursement_requested
         else f"{creator.name} ha aggiunto {movement.supplier} per € {format_amount(movement.amount)}."
     )
-    db.add_all(
-        [
-            Notification(
-                user_id=admin.id,
-                movement_id=movement.id,
-                kind=kind,
-                title=title,
-                message=message,
-            )
-            for admin in recipients
-        ]
-    )
+    notifications = [
+        Notification(
+            user_id=admin.id,
+            movement_id=movement.id,
+            kind=kind,
+            title=title,
+            message=message,
+        )
+        for admin in recipients
+    ]
+    db.add_all(notifications)
+    db.flush()
+    send_push_for_notifications(db, notifications)
 
 
 def notify_reimbursement_completed(db: Session, movement: Movement) -> None:
-    db.add(
-        Notification(
-            user_id=movement.created_by,
-            movement_id=movement.id,
-            kind="reimbursement_completed",
-            title="Rimborso effettuato",
-            message=(
-                f"Il rimborso di € {format_amount(movement.amount)} "
-                f"per {movement.supplier} è stato effettuato."
-            ),
-        )
+    notification = Notification(
+        user_id=movement.created_by,
+        movement_id=movement.id,
+        kind="reimbursement_completed",
+        title="Rimborso effettuato",
+        message=(
+            f"Il rimborso di € {format_amount(movement.amount)} "
+            f"per {movement.supplier} è stato effettuato."
+        ),
     )
+    db.add(notification)
+    db.flush()
+    send_push_for_notifications(db, [notification])

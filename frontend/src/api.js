@@ -76,8 +76,30 @@ export const api = {
 
 export async function uploadReceipt(movementId, file, options = {}) {
   const body = new FormData()
-  body.append('file', file)
+  body.append('file', await compressReceiptFile(file))
   return request(`/movements/${movementId}/receipts`, { method: 'POST', body, headers: {}, ...options })
+}
+
+export async function compressReceiptFile(file) {
+  if (!file.type.startsWith('image/') || file.type === 'image/png') return file
+  if (typeof document === 'undefined' || typeof createImageBitmap === 'undefined') return file
+
+  try {
+    const bitmap = await createImageBitmap(file)
+    const maxSide = 1800
+    const ratio = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+    if (ratio >= 1 && file.size < 1_200_000) return file
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round(bitmap.width * ratio))
+    canvas.height = Math.max(1, Math.round(bitmap.height * ratio))
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82))
+    if (!blob || blob.size >= file.size) return file
+    return new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })
+  } catch {
+    return file
+  }
 }
 
 export async function downloadReceipt(movementId, receipt) {

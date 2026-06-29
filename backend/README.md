@@ -28,6 +28,35 @@ uvicorn app.main:app --reload
 
 Documentazione API: `http://localhost:8000/docs`.
 
+## Notifiche push
+
+Le notifiche push della PWA richiedono le chiavi VAPID nel backend:
+
+```env
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_CLAIM_EMAIL=admin@example.it
+```
+
+Senza queste variabili le notifiche in-app continuano a funzionare, mentre
+l'attivazione push dal frontend resta disabilitata lato server.
+
+## Recupero password
+
+Il reset password usa token monouso validi 2 ore. Per inviare le email configura:
+
+```env
+FRONTEND_URL=https://app.example.it
+SMTP_HOST=smtp.example.it
+SMTP_PORT=587
+SMTP_USERNAME=...
+SMTP_PASSWORD=...
+SMTP_FROM=Cassa Campo <noreply@example.it>
+```
+
+Se SMTP non è configurato, gli endpoint restano disponibili ma non viene inviata
+nessuna email.
+
 Per fermare PostgreSQL, dalla cartella `database`:
 
 ```bash

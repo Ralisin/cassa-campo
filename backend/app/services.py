@@ -14,6 +14,7 @@ from app.models import (
     ExpenseCategory,
     Movement,
     MovementReimbursement,
+    MovementReceipt,
     MovementType,
     PaymentMethod,
     TransferType,
@@ -23,6 +24,7 @@ from app.models import (
 from app.schemas import (
     CategorySummary,
     CassaRead,
+    DashboardAnomaly,
     DashboardRead,
     MembershipRead,
     MovementInput,
@@ -111,6 +113,8 @@ def movement_to_read(movement: Movement) -> MovementRead:
             else None
         ),
         receipts=[MovementReceiptRead.model_validate(receipt) for receipt in movement.receipts],
+        deleted_at=movement.deleted_at,
+        deleted_by=movement.deleted_by,
     )
 
 
@@ -135,7 +139,9 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
 
     def total(movement_type: MovementType, method: PaymentMethod | None = None) -> Decimal:
         query = select(func.coalesce(func.sum(Movement.amount), 0)).where(
-            Movement.type == movement_type, Movement.cassa_id == cassa_id
+            Movement.type == movement_type,
+            Movement.cassa_id == cassa_id,
+            Movement.deleted_at.is_(None),
         )
         if method:
             query = query.where(Movement.payment_method == method)
@@ -186,6 +192,7 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
             .where(
                 MovementReimbursement.reimbursed_at.is_(None),
                 Movement.cassa_id == cassa_id,
+                Movement.deleted_at.is_(None),
             )
         )
         or 0
@@ -197,7 +204,11 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
             joinedload(Movement.creator),
             selectinload(Movement.receipts),
         )
-        .where(Movement.operation_date == camp_today(), Movement.cassa_id == cassa_id)
+        .where(
+            Movement.operation_date == camp_today(),
+            Movement.cassa_id == cassa_id,
+            Movement.deleted_at.is_(None),
+        )
         .order_by(Movement.created_at.desc())
     ).all()
     budgets: dict[str, Decimal] = {}
@@ -217,6 +228,7 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
             .where(
                 Movement.type == MovementType.EXPENSE,
                 Movement.cassa_id == cassa_id,
+                Movement.deleted_at.is_(None),
                 Movement.category.is_not(None),
             )
             .group_by(Movement.category)
@@ -227,6 +239,75 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
         .where(ExpenseCategory.active.is_(True))
         .order_by(ExpenseCategory.position)
     ).all()
+    missing_receipts_count = db.scalar(
+        select(func.count(Movement.id))
+        .outerjoin(Movement.receipts)
+        .where(
+            Movement.cassa_id == cassa_id,
+            Movement.deleted_at.is_(None),
+            Movement.type == MovementType.EXPENSE,
+            MovementReceipt.id.is_(None),
+        )
+    ) or 0
+    high_expense = db.scalar(
+        select(func.max(Movement.amount)).where(
+            Movement.cassa_id == cassa_id,
+            Movement.deleted_at.is_(None),
+            Movement.type == MovementType.EXPENSE,
+        )
+    )
+    over_budget_categories = [
+        category
+        for category in categories
+        if budgets.get(category.slug, ZERO) > 0
+        and spent_by_category.get(category.slug, ZERO) > budgets.get(category.slug, ZERO)
+    ]
+    anomalies: list[DashboardAnomaly] = []
+    if missing_receipts_count:
+        anomalies.append(
+            DashboardAnomaly(
+                kind="missing_receipts",
+                severity="warn",
+                title="Scontrini mancanti",
+                message=f"{missing_receipts_count} uscite non hanno scontrini allegati.",
+                count=missing_receipts_count,
+                target="/movimenti",
+            )
+        )
+    if pending_reimbursements > 0:
+        anomalies.append(
+            DashboardAnomaly(
+                kind="pending_reimbursements",
+                severity="info",
+                title="Rimborsi aperti",
+                message=f"Ci sono € {pending_reimbursements:.2f} ancora da rimborsare.",
+                amount=pending_reimbursements,
+                target="/rimborsi",
+            )
+        )
+    if over_budget_categories:
+        anomalies.append(
+            DashboardAnomaly(
+                kind="over_budget",
+                severity="danger",
+                title="Categorie fuori budget",
+                message=f"{len(over_budget_categories)} categorie hanno superato il preventivo.",
+                count=len(over_budget_categories),
+                target="/riepilogo",
+            )
+        )
+    if high_expense and Decimal(high_expense) >= Decimal("250.00"):
+        anomalies.append(
+            DashboardAnomaly(
+                kind="high_expense",
+                severity="warn",
+                title="Spesa alta",
+                message=f"La spesa più alta registrata è di € {Decimal(high_expense):.2f}.",
+                amount=Decimal(high_expense),
+                target="/movimenti",
+            )
+        )
+
     return DashboardRead(
         max_budget=max_budget,
         spent=spent,
@@ -244,4 +325,5 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
             for category in categories
         ],
         today_movements=[movement_to_read(item) for item in today_movements],
+        anomalies=anomalies,
     )

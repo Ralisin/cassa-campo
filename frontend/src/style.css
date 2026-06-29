@@ -213,6 +213,86 @@
   pointer-events: none;
 }
 
+.dashboard-anomaly,
+.audit-item,
+.trash-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  background: #ffffff;
+  box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.45);
+}
+
+.dashboard-anomaly {
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.dashboard-anomaly:hover {
+  transform: translateY(-1px);
+}
+
+.dashboard-anomaly--warn {
+  border-color: #f3d99a;
+  background: #fffdf7;
+}
+
+.dashboard-anomaly--danger {
+  border-color: #fecaca;
+  background: #fff7f7;
+}
+
+.dashboard-anomaly__icon,
+.audit-item__icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9999px;
+  background: #edf7f1;
+  color: #224f3b;
+}
+
+.dashboard-anomaly--warn .dashboard-anomaly__icon {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.dashboard-anomaly--danger .dashboard-anomaly__icon {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.dashboard-anomaly strong,
+.dashboard-anomaly small,
+.audit-item strong,
+.audit-item small,
+.trash-item strong,
+.trash-item small {
+  display: block;
+}
+
+.dashboard-anomaly strong,
+.audit-item strong,
+.trash-item strong {
+  color: #0f172a;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.dashboard-anomaly small,
+.audit-item small,
+.trash-item small {
+  margin-top: 0.12rem;
+  color: #64748b;
+  font-size: 0.74rem;
+  font-weight: 650;
+}
+
 .notifications-popover.p-popover {
   width: min(24rem, calc(100vw - 1.5rem));
   border: 1px solid #e2e8f0;
@@ -736,6 +816,88 @@
 .mobile-tabbar__item--active .mobile-tabbar__label {
   font-weight: 900;
   animation: mobile-tab-label-arrive 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mobile-more-dialog.p-dialog {
+  overflow: hidden;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 1.15rem;
+  box-shadow: 0 28px 70px -32px rgba(15, 23, 42, 0.75);
+}
+
+.mobile-more-dialog .p-dialog-header {
+  padding: 1rem 1rem 0.65rem;
+}
+
+.mobile-more-dialog .p-dialog-title {
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 900;
+}
+
+.mobile-more-dialog .p-dialog-content {
+  padding: 0 1rem 1rem;
+}
+
+.mobile-more-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.mobile-more-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.8rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.85rem;
+  background: #ffffff;
+  color: #0f172a;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.mobile-more-item:enabled:hover,
+.mobile-more-item--active {
+  border-color: #b9d1c2;
+  background: #f8fbf9;
+}
+
+.mobile-more-item:enabled:active {
+  transform: scale(0.99);
+}
+
+.mobile-more-item--disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.mobile-more-item__icon {
+  display: grid;
+  width: 2.35rem;
+  height: 2.35rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 0.75rem;
+  background: #edf7f1;
+  color: #224f3b;
+}
+
+.mobile-more-item strong,
+.mobile-more-item small {
+  display: block;
+}
+
+.mobile-more-item strong {
+  font-size: 0.88rem;
+  font-weight: 900;
+}
+
+.mobile-more-item small {
+  margin-top: 0.1rem;
+  color: #64748b;
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 
 @keyframes mobile-tab-icon-arrive {
@@ -1575,6 +1737,13 @@
   background: rgba(18, 55, 42, 0.07) !important;
 }
 
+.movement-inline-retry.p-button {
+  min-height: 1.85rem;
+  margin-left: 0.35rem;
+  padding: 0.2rem 0.45rem !important;
+  box-shadow: none !important;
+}
+
 .movement-filter-segments {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2229,6 +2398,17 @@
 .reimbursement-list-action.p-button:active {
   transform: none;
   filter: brightness(0.96);
+}
+
+.reimbursement-undo .p-message-text {
+  width: 100%;
+}
+
+.reimbursement-undo__button.p-button {
+  min-height: 1.85rem;
+  margin-left: 0.35rem;
+  padding: 0.2rem 0.45rem !important;
+  box-shadow: none !important;
 }
 
 .reimbursement-list-action.p-button:focus-visible,

@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.audit_service import write_audit
 from app.dependencies import CurrentMembership, DbSession, WritableOperatorMembership
 from app.models import Movement, MovementReimbursement, UserRole
 from app.notification_service import notify_reimbursement_completed
@@ -31,7 +32,7 @@ def list_reimbursements(db: DbSession, membership: CurrentMembership) -> Reimbur
         select(Movement)
         .join(Movement.reimbursement)
         .options(*reimbursement_load_options())
-        .where(Movement.cassa_id == membership.cassa_id)
+        .where(Movement.cassa_id == membership.cassa_id, Movement.deleted_at.is_(None))
         .order_by(Movement.operation_date.desc(), Movement.created_at.desc())
     )
     if membership.role not in (UserRole.ADMIN, UserRole.CASHIER):
@@ -66,5 +67,19 @@ def update_reimbursement(
     movement.reimbursement.reimbursed_by = operator.user_id if data.reimbursed else None
     if data.reimbursed and not was_reimbursed and movement.created_by != operator.user_id:
         notify_reimbursement_completed(db, movement)
+    write_audit(
+        db,
+        action="reimbursement_updated",
+        entity_type="movement",
+        entity_id=movement.id,
+        cassa_id=operator.cassa_id,
+        user_id=operator.user_id,
+        summary=(
+            f"Rimborso completato per {movement.supplier}"
+            if data.reimbursed
+            else f"Rimborso riaperto per {movement.supplier}"
+        ),
+        details={"amount": str(movement.amount), "reimbursed": data.reimbursed},
+    )
     db.commit()
     return list_reimbursements(db, operator)

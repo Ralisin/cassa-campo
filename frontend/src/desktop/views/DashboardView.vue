@@ -14,6 +14,8 @@ const router = useRouter()
 const dashboard = ref(null)
 const recentMovements = ref([])
 const loadingMovements = ref(true)
+const dashboardError = ref('')
+const movementsError = ref('')
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const euroShort = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
 
@@ -167,13 +169,21 @@ const trend = computed(() => {
 })
 
 async function loadDashboard() {
-  dashboard.value = await api.get('/dashboard')
+  dashboardError.value = ''
+  try {
+    dashboard.value = await api.get('/dashboard')
+  } catch (cause) {
+    dashboardError.value = cause instanceof Error ? cause.message : 'Caricamento dashboard non riuscito'
+  }
 }
 
 async function loadMovements() {
+  movementsError.value = ''
   try {
     const page = await api.get('/movements')
     recentMovements.value = page.items
+  } catch (cause) {
+    movementsError.value = cause instanceof Error ? cause.message : 'Caricamento movimenti recenti non riuscito'
   } finally {
     loadingMovements.value = false
   }
@@ -195,6 +205,32 @@ usePolling(loadMovements, 12000)
       <div class="dk-grid dk-grid--kpi">
         <KpiCard v-for="kpi in kpis" :key="kpi.label" v-bind="kpi" />
       </div>
+
+      <section v-if="dashboard.anomalies?.length" class="dk-card dk-section">
+        <header class="dk-card__head">
+          <div>
+            <h3 class="dk-card__title"><i class="pi pi-exclamation-triangle dk-card__title-icon" /> Da controllare</h3>
+            <p class="dk-card__subtitle">Situazioni che meritano una verifica rapida</p>
+          </div>
+        </header>
+        <div class="grid gap-2 md:grid-cols-2">
+          <button
+            v-for="item in dashboard.anomalies"
+            :key="item.kind"
+            type="button"
+            class="dashboard-anomaly"
+            :class="`dashboard-anomaly--${item.severity}`"
+            @click="item.target && router.push(item.target)"
+          >
+            <span class="dashboard-anomaly__icon"><i class="pi pi-exclamation-triangle" /></span>
+            <span class="min-w-0 flex-1 text-left">
+              <strong>{{ item.title }}</strong>
+              <small>{{ item.message }}</small>
+            </span>
+            <i v-if="item.target" class="pi pi-chevron-right text-xs text-slate-400" />
+          </button>
+        </div>
+      </section>
 
       <div class="dk-grid dk-grid--dash dk-section">
         <div class="dk-stack">
@@ -218,7 +254,11 @@ usePolling(loadMovements, 12000)
               </div>
               <PButton label="Vedi tutti" icon="pi pi-arrow-right" icon-pos="right" text size="small" @click="router.push('/movimenti')" />
             </header>
-            <MovementsTable :movements="recentMovements.slice(0, 8)" :loading="loadingMovements" compact empty-text="Nessun movimento registrato" />
+            <PMessage v-if="movementsError" severity="error" size="small" class="mb-3">
+              {{ movementsError }}
+              <PButton label="Riprova" icon="pi pi-refresh" size="small" text class="movement-inline-retry" @click="loadMovements" />
+            </PMessage>
+            <MovementsTable v-else :movements="recentMovements.slice(0, 8)" :loading="loadingMovements" compact empty-text="Nessun movimento registrato" />
           </section>
         </div>
 
@@ -266,7 +306,7 @@ usePolling(loadMovements, 12000)
       </div>
     </template>
 
-    <template v-else>
+    <template v-else-if="!dashboardError">
       <div class="dk-grid dk-grid--kpi">
         <article v-for="n in 4" :key="n" class="dk-kpi">
           <Skel circle w="3rem" h="3rem" />
@@ -329,6 +369,15 @@ usePolling(loadMovements, 12000)
           </section>
         </div>
       </div>
+    </template>
+
+    <template v-else>
+      <section class="dk-card dk-section text-center">
+        <PAvatar icon="pi pi-exclamation-triangle" size="large" shape="circle" class="!bg-red-50 !text-red-600" />
+        <h2 class="mt-3 text-lg font-black text-slate-900">Dashboard non disponibile</h2>
+        <p class="mx-auto mt-1 max-w-md text-sm text-slate-500">{{ dashboardError }}</p>
+        <PButton label="Riprova" icon="pi pi-refresh" class="mt-4" @click="loadDashboard" />
+      </section>
     </template>
   </div>
 </template>

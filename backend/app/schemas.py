@@ -89,6 +89,15 @@ class PasswordChange(BaseModel):
     new_password: str = Field(min_length=8, max_length=72)
 
 
+class PasswordResetRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetConfirm(BaseModel):
+    token: str = Field(min_length=20)
+    new_password: str = Field(min_length=8, max_length=72)
+
+
 class MembershipInput(BaseModel):
     unit: Branch
     kind: CassaKind = CassaKind.CAMPO
@@ -166,6 +175,13 @@ class MovementRead(ApiModel):
     reimbursed_at: datetime | None
     reimbursed_by_name: str | None
     receipts: list[MovementReceiptRead] = Field(default_factory=list)
+    deleted_at: datetime | None = None
+    deleted_by: uuid.UUID | None = None
+
+
+class MovementRestoreResult(BaseModel):
+    id: uuid.UUID
+    restored: bool = True
 
 
 class MovementCreatorRead(BaseModel):
@@ -205,6 +221,24 @@ class NotificationRead(ApiModel):
 class NotificationList(BaseModel):
     items: list[NotificationRead]
     unread_count: int
+
+
+class PushKeys(BaseModel):
+    p256dh: str = Field(min_length=1, max_length=255)
+    auth: str = Field(min_length=1, max_length=255)
+
+
+class PushSubscriptionInput(BaseModel):
+    endpoint: str = Field(min_length=1, max_length=2048)
+    keys: PushKeys
+
+
+class PushPublicKey(BaseModel):
+    public_key: str | None
+
+
+class PushSubscriptionStatus(BaseModel):
+    enabled: bool
 
 
 class TransferInput(BaseModel):
@@ -261,6 +295,16 @@ class CategorySummary(BaseModel):
     spent: Decimal
 
 
+class DashboardAnomaly(BaseModel):
+    kind: str
+    severity: Literal["info", "warn", "danger"] = "info"
+    title: str
+    message: str
+    count: int | None = None
+    amount: Decimal | None = None
+    target: str | None = None
+
+
 class DashboardRead(BaseModel):
     max_budget: Decimal
     spent: Decimal
@@ -270,6 +314,20 @@ class DashboardRead(BaseModel):
     bank_balance: Decimal
     category_summaries: list[CategorySummary]
     today_movements: list[MovementRead]
+    anomalies: list[DashboardAnomaly] = Field(default_factory=list)
+
+
+class AuditLogRead(ApiModel):
+    id: uuid.UUID
+    cassa_id: uuid.UUID | None
+    user_id: uuid.UUID | None
+    action: str
+    entity_type: str
+    entity_id: uuid.UUID | None
+    summary: str
+    details: str | None
+    created_at: datetime
+    user_name: str | None = None
 
 
 class SystemCassaRead(ApiModel):

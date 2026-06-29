@@ -1,8 +1,6 @@
 import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from unittest.mock import patch
-
 import pytest
 from fastapi import HTTPException
 
@@ -17,15 +15,7 @@ from app.models import (
     User,
     UserRole,
 )
-from app.routers.movements import delete_movement, list_movements
-
-
-class FakeStorage:
-    def __init__(self) -> None:
-        self.deleted: list[str] = []
-
-    def delete(self, storage_key: str) -> None:
-        self.deleted.append(storage_key)
+from app.routers.movements import delete_movement, list_deleted_movements, list_movements, restore_movement
 
 
 def make_movement(
@@ -104,11 +94,13 @@ def test_user_can_delete_own_movement_and_related_notifications(setup, membershi
     response = delete_movement(movement_id, db, membership_of(alice, cassa))
 
     assert response.status_code == 204
-    assert db.get(Movement, movement_id) is None
-    assert db.get(Notification, notification_id) is None
+    assert db.get(Movement, movement_id).deleted_at is not None
+    assert db.get(Notification, notification_id) is not None
+    assert list_movements(db, cassa).items == []
+    assert [item.id for item in list_deleted_movements(db, membership_of(alice, cassa))] == [movement_id]
 
 
-def test_deleting_movement_deletes_related_receipt_object(setup, membership_of) -> None:
+def test_deleted_movement_can_be_restored_with_receipts(setup, membership_of) -> None:
     db, group, cassa, alice, bob = setup
     movement = make_movement(cassa, alice, "Supermercato", date.today(), datetime.now())
     receipt = MovementReceipt(
@@ -120,18 +112,21 @@ def test_deleting_movement_deletes_related_receipt_object(setup, membership_of) 
         size_bytes=128,
         storage_key="movements/movement-id/scontrino.pdf",
     )
-    storage = FakeStorage()
     db.add_all([movement, receipt])
     db.flush()
     movement_id, receipt_id = movement.id, receipt.id
 
-    with patch("app.routers.movements.get_receipt_storage", return_value=storage):
-        response = delete_movement(movement_id, db, membership_of(alice, cassa))
+    response = delete_movement(movement_id, db, membership_of(alice, cassa))
 
     assert response.status_code == 204
-    assert storage.deleted == ["movements/movement-id/scontrino.pdf"]
-    assert db.get(Movement, movement_id) is None
-    assert db.get(MovementReceipt, receipt_id) is None
+    assert db.get(Movement, movement_id).deleted_at is not None
+    assert db.get(MovementReceipt, receipt_id) is not None
+
+    restored = restore_movement(movement_id, db, membership_of(alice, cassa))
+
+    assert restored.restored is True
+    assert db.get(Movement, movement_id).deleted_at is None
+    assert [item.id for item in list_movements(db, cassa).items] == [movement_id]
 
 
 def test_user_cannot_delete_another_users_movement(setup, membership_of) -> None:

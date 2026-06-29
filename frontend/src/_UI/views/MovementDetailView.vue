@@ -1,14 +1,19 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import { useConfirm } from 'primevue/useconfirm'
 import { useRoute, useRouter } from 'vue-router'
-import { api, downloadReceipt } from '@/api'
+import { api, downloadReceipt, uploadReceipt } from '@/api'
 import { useSessionStore } from '@/stores/session'
 
 const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
+const confirm = useConfirm()
 const movement = ref(null)
 const receiptBusy = ref('')
+const receiptInput = ref(null)
+const receiptCameraInput = ref(null)
+const receiptError = ref('')
 const canEdit = computed(
   () => !session.cassaClosed && (session.isOperator || movement.value?.created_by === session.user?.id),
 )
@@ -22,7 +27,25 @@ const rows = [
   ['pi pi-building', 'Fornitore', 'supplier'],
   ['pi pi-file-edit', 'Note', 'notes'],
 ]
-onMounted(async () => (movement.value = await api.get(`/movements/${route.params.id}`)))
+async function loadMovement() {
+  movement.value = await api.get(`/movements/${route.params.id}`)
+}
+
+onMounted(loadMovement)
+
+function confirmRemove(event) {
+  confirm.require({
+    target: event.currentTarget,
+    message: 'Eliminare definitivamente questo movimento?',
+    icon: 'pi pi-exclamation-triangle',
+    header: 'Conferma eliminazione',
+    rejectLabel: 'Annulla',
+    acceptLabel: 'Elimina',
+    acceptClass: 'p-button-danger',
+    accept: remove,
+  })
+}
+
 async function remove() {
   await api.delete(`/movements/${route.params.id}`)
   router.push('/movimenti')
@@ -49,6 +72,37 @@ async function deleteReceipt(receipt) {
   } finally {
     receiptBusy.value = ''
   }
+}
+
+async function selectReceipts(event) {
+  const files = Array.from(event.target.files ?? [])
+  event.target.value = ''
+  if (!files.length) return
+  receiptBusy.value = 'upload'
+  receiptError.value = ''
+  try {
+    for (const file of files) {
+      await uploadReceipt(movement.value.id, file)
+    }
+    await loadMovement()
+  } catch (cause) {
+    receiptError.value = cause instanceof Error ? cause.message : 'Caricamento scontrino non riuscito'
+  } finally {
+    receiptBusy.value = ''
+  }
+}
+
+function confirmDeleteReceipt(event, receipt) {
+  confirm.require({
+    target: event.currentTarget,
+    message: `Eliminare lo scontrino "${receipt.filename}"?`,
+    icon: 'pi pi-exclamation-triangle',
+    header: 'Conferma eliminazione',
+    rejectLabel: 'Annulla',
+    acceptLabel: 'Elimina',
+    acceptClass: 'p-button-danger',
+    accept: () => deleteReceipt(receipt),
+  })
 }
 function formatBytes(bytes) {
   if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`
@@ -85,13 +139,20 @@ function formatBytes(bytes) {
           </div>
         </section>
         <section class="movement-detail-receipts border-t border-slate-200 pt-4">
+          <input ref="receiptInput" type="file" accept="image/jpeg,image/png,application/pdf" multiple class="hidden" @change="selectReceipts">
+          <input ref="receiptCameraInput" type="file" accept="image/*" capture="environment" class="hidden" @change="selectReceipts">
           <div class="mb-3 flex items-center gap-3">
             <PAvatar icon="pi pi-paperclip" shape="circle" class="!bg-emerald-50 !text-forest" />
             <div class="min-w-0 flex-1">
               <h3 class="text-sm font-black text-forest">Scontrini</h3>
               <p class="text-xs font-medium text-slate-500">{{ movement.receipts.length || 'Nessun' }} {{ movement.receipts.length === 1 ? 'allegato' : 'allegati' }}</p>
             </div>
+            <div v-if="canEdit" class="flex gap-1.5">
+              <PButton icon="pi pi-camera" rounded aria-label="Scatta scontrino" class="!h-9 !w-9 !p-0" :loading="receiptBusy === 'upload'" @click="receiptCameraInput?.click()" />
+              <PButton icon="pi pi-plus" rounded outlined aria-label="Aggiungi scontrino" class="!h-9 !w-9 !p-0" :disabled="receiptBusy === 'upload'" @click="receiptInput?.click()" />
+            </div>
           </div>
+          <PMessage v-if="receiptError" severity="error" size="small" class="mb-2">{{ receiptError }}</PMessage>
           <div v-if="movement.receipts.length" class="space-y-2">
             <div v-for="receipt in movement.receipts" :key="receipt.id" class="receipt-upload-item">
               <i :class="receipt.content_type === 'application/pdf' ? 'pi pi-file-pdf' : 'pi pi-image'" class="text-slate-500" />
@@ -100,7 +161,7 @@ function formatBytes(bytes) {
                 <span class="block text-[11px] font-semibold text-slate-500">{{ formatBytes(receipt.size_bytes) }}</span>
               </span>
               <PButton icon="pi pi-download" text rounded severity="secondary" aria-label="Scarica scontrino" class="!h-8 !w-8" :loading="receiptBusy === receipt.id" @click="download(receipt)" />
-              <PButton v-if="canEdit" icon="pi pi-trash" text rounded severity="danger" aria-label="Elimina scontrino" class="!h-8 !w-8" :disabled="receiptBusy === receipt.id" @click="deleteReceipt(receipt)" />
+              <PButton v-if="canEdit" icon="pi pi-trash" text rounded severity="danger" aria-label="Elimina scontrino" class="!h-8 !w-8" :disabled="receiptBusy === receipt.id" @click="confirmDeleteReceipt($event, receipt)" />
             </div>
           </div>
           <p v-else class="rounded-lg bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">Nessuno scontrino caricato.</p>
@@ -109,7 +170,7 @@ function formatBytes(bytes) {
           <RouterLink class="movement-detail-actions__link" :to="`/movimenti/${movement.id}/modifica`">
             <PButton label="Modifica" icon="pi pi-pencil" class="movement-detail-action movement-detail-action--edit" fluid />
           </RouterLink>
-          <PButton label="Elimina" icon="pi pi-trash" class="movement-detail-action movement-detail-action--delete" fluid @click="remove" />
+          <PButton label="Elimina" icon="pi pi-trash" class="movement-detail-action movement-detail-action--delete" fluid @click="confirmRemove" />
         </section>
       </template>
     </PCard>

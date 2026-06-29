@@ -54,6 +54,7 @@ async function submit() {
             </div>
             <PMessage v-if="error" severity="error" size="small">{{ error }}</PMessage>
             <PButton type="submit" label="Entra" icon="pi pi-arrow-right" icon-pos="right" size="large" :loading="loading" fluid raised class="primary-cta login-submit" />
+            <PButton type="button" label="Password dimenticata" icon="pi pi-key" text fluid @click="router.push('/reset-password')" />
           </form>
         </template>
       </PCard>

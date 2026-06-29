@@ -131,8 +131,13 @@ class User(Base):
     memberships: Mapped[list["Membership"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    movements: Mapped[list["Movement"]] = relationship(back_populates="creator")
+    movements: Mapped[list["Movement"]] = relationship(
+        back_populates="creator", foreign_keys="Movement.created_by"
+    )
     transfers: Mapped[list["TreasuryTransfer"]] = relationship(back_populates="creator")
+    push_subscriptions: Mapped[list["PushSubscription"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
 
 
 class CampSettings(Base):
@@ -199,8 +204,11 @@ class Movement(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    deleted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
 
-    creator: Mapped[User] = relationship(back_populates="movements")
+    creator: Mapped[User] = relationship(back_populates="movements", foreign_keys=[created_by])
+    deleter: Mapped[User | None] = relationship(foreign_keys=[deleted_by])
     expense_category: Mapped[ExpenseCategory | None] = relationship(back_populates="movements")
     reimbursement: Mapped["MovementReimbursement | None"] = relationship(
         back_populates="movement", cascade="all, delete-orphan", uselist=False
@@ -279,3 +287,52 @@ class Notification(Base):
 
     user: Mapped[User] = relationship(foreign_keys=[user_id])
     movement: Mapped[Movement] = relationship(back_populates="notifications")
+
+
+class PushSubscription(Base):
+    __tablename__ = "push_subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    endpoint: Mapped[str] = mapped_column(String(2048), unique=True, index=True)
+    p256dh: Mapped[str] = mapped_column(String(255))
+    auth: Mapped[str] = mapped_column(String(255))
+    user_agent: Mapped[str | None] = mapped_column(String(512))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    user: Mapped[User] = relationship(back_populates="push_subscriptions")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    cassa_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("casse.id", ondelete="CASCADE"), index=True
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"), index=True)
+    action: Mapped[str] = mapped_column(String(100), index=True)
+    entity_type: Mapped[str] = mapped_column(String(100), index=True)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(index=True)
+    summary: Mapped[str] = mapped_column(String(255))
+    details: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    cassa: Mapped[Cassa | None] = relationship(foreign_keys=[cassa_id])
+    user: Mapped[User | None] = relationship(foreign_keys=[user_id])

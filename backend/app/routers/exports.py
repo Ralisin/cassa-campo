@@ -7,7 +7,7 @@ from fastapi.responses import StreamingResponse
 from openpyxl import Workbook
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.dependencies import CurrentCassa, DbSession, OperatorMembership
 from app.models import (
@@ -15,6 +15,8 @@ from app.models import (
     Cassa,
     CassaKind,
     Movement,
+    MovementReceipt,
+    MovementReimbursement,
     MovementType,
     PaymentMethod,
     TransferType,
@@ -73,6 +75,39 @@ def _add_dropdown(sheet, range_ref: str, values: list[str]) -> None:
     validation.add(range_ref)
 
 
+def _add_checks_sheet(workbook: Workbook, db: DbSession, cassa: Cassa) -> None:
+    sheet = workbook.create_sheet("Controlli")
+    sheet.append(["Controllo", "Valore", "Nota"])
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color=WHITE)
+        cell.fill = PatternFill("solid", fgColor="12372A")
+    missing_receipts = db.scalar(
+        select(func.count(Movement.id))
+        .outerjoin(Movement.receipts)
+        .where(
+            Movement.cassa_id == cassa.id,
+            Movement.deleted_at.is_(None),
+            Movement.type == MovementType.EXPENSE,
+            MovementReceipt.id.is_(None),
+        )
+    ) or 0
+    pending_reimbursements = db.scalar(
+        select(func.coalesce(func.sum(Movement.amount), 0))
+        .join(Movement.reimbursement)
+        .where(
+            Movement.cassa_id == cassa.id,
+            Movement.deleted_at.is_(None),
+            MovementReimbursement.reimbursed_at.is_(None),
+        )
+    ) or Decimal("0")
+    sheet.append(["Uscite senza scontrino", missing_receipts, "Da verificare prima della chiusura"])
+    sheet.append(["Rimborsi aperti", pending_reimbursements, "Importo ancora da restituire"])
+    sheet["B3"].number_format = EURO
+    sheet.column_dimensions["A"].width = 26
+    sheet.column_dimensions["B"].width = 16
+    sheet.column_dimensions["C"].width = 42
+
+
 def _movement_row(movement: Movement) -> dict:
     cash_in = cash_out = bank_in = bank_out = Decimal("0")
     if movement.payment_method == PaymentMethod.CASH:
@@ -125,7 +160,10 @@ def build_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
         *[
             _movement_row(item)
             for item in db.scalars(
-                select(Movement).where(Movement.cassa_id == cassa.id)
+                select(Movement).where(
+                    Movement.cassa_id == cassa.id,
+                    Movement.deleted_at.is_(None),
+                )
             ).all()
         ],
         *[
@@ -302,13 +340,19 @@ def build_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
         sheet.cell(7, column).font = Font(bold=True)
     _add_dropdown(sheet, f"E8:E{VALIDATION_LAST_ROW}", ["L/C", "E/G", "R/S", "CoCa", "Gruppo"])
     _add_dropdown(sheet, f"F8:F{VALIDATION_LAST_ROW}", ["O", "C", "A"])
+    _add_checks_sheet(workbook, db, cassa)
     return workbook
 
 
 def build_annual_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
     entries = [
         _movement_row(item)
-        for item in db.scalars(select(Movement).where(Movement.cassa_id == cassa.id)).all()
+        for item in db.scalars(
+            select(Movement).where(
+                Movement.cassa_id == cassa.id,
+                Movement.deleted_at.is_(None),
+            )
+        ).all()
     ]
     entries.sort(key=lambda item: (item["operation_date"], item["created_at"]))
 
@@ -385,6 +429,7 @@ def build_annual_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
     last_row = max(5, 4 + len(entries))
     sheet.auto_filter.ref = f"A4:L{last_row}"
     sheet.print_area = f"A1:L{last_row}"
+    _add_checks_sheet(workbook, db, cassa)
     return workbook
 
 

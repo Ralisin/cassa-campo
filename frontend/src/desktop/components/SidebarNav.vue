@@ -11,7 +11,15 @@ defineEmits(['toggle'])
 const session = useSessionStore()
 const route = useRoute()
 const router = useRouter()
-const { pendingReimbursementCount, reimbursementCountLabel } = useAppChrome()
+const {
+  pendingReimbursementCount,
+  reimbursementCountLabel,
+  pushSupported,
+  pushEnabled,
+  pushBusy,
+  enablePushNotifications,
+  disablePushNotifications,
+} = useAppChrome()
 const userMenu = ref()
 
 const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
@@ -26,6 +34,7 @@ const navItems = computed(() => {
     { label: 'Rimborsi', icon: 'pi pi-replay', to: '/rimborsi', key: 'reimbursements', badge: true },
     { label: 'Riepilogo', icon: 'pi pi-chart-pie', to: '/riepilogo', key: 'summary' },
     ...(session.isOperator ? [{ label: 'Impostazioni', icon: 'pi pi-sliders-h', to: '/impostazioni', key: 'settings' }] : []),
+    ...(session.isOperator ? [{ label: 'Audit', icon: 'pi pi-history', to: '/audit', key: 'audit' }] : []),
     ...(session.isAdmin ? [{ label: 'Utenti', icon: 'pi pi-users', to: '/utenti', key: 'users' }] : []),
   ].map((item) => ({
     ...item,
@@ -40,6 +49,14 @@ const userInitials = computed(() => {
 })
 
 const userMenuItems = computed(() => [
+  ...(pushSupported.value
+    ? [{
+        label: pushEnabled.value ? 'Disattiva notifiche' : 'Attiva notifiche',
+        icon: pushEnabled.value ? 'pi pi-bell-slash' : 'pi pi-bell',
+        command: () => (pushEnabled.value ? disablePushNotifications() : enablePushNotifications()),
+        disabled: pushBusy.value,
+      }]
+    : []),
   ...(session.canManageCasse
     ? [{ label: 'Casse', icon: 'pi pi-wallet', command: () => router.push('/seleziona-cassa') }]
     : session.memberships.length > 1

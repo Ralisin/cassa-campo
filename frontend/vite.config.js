@@ -10,6 +10,9 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt',
       includeAssets: ['favicon-32x32.png', 'apple-touch-icon.png', 'icon.svg'],
+      workbox: {
+        importScripts: ['push-sw.js'],
+      },
       manifest: {
         name: 'Cassa Campo',
         short_name: 'Cassa Campo',

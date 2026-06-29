@@ -5,6 +5,7 @@ import { useSessionStore } from '@/stores/session'
 // router-view inside MobileShell.
 const DashboardView = () => import('@/_UI/views/DashboardView.vue')
 const LoginView = () => import('@/_UI/views/LoginView.vue')
+const ResetPasswordView = () => import('@/_UI/views/ResetPasswordView.vue')
 const CassaSelectView = () => import('@/_UI/views/CassaSelectView.vue')
 const MovementDetailView = () => import('@/_UI/views/MovementDetailView.vue')
 const MovementFormView = () => import('@/_UI/views/MovementFormView.vue')
@@ -12,6 +13,7 @@ const MovementsView = () => import('@/_UI/views/MovementsView.vue')
 const SummaryView = () => import('@/_UI/views/SummaryView.vue')
 const UsersView = () => import('@/_UI/views/UsersView.vue')
 const ReimbursementsView = () => import('@/_UI/views/ReimbursementsView.vue')
+const AuditView = () => import('@/_UI/views/AuditView.vue')
 const SystemAdminView = () => import('@/desktop/views/SystemAdminView.vue')
 
 // Desktop "gestionale" views — rendered through the `desktop` named router-view
@@ -32,6 +34,7 @@ const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/login', components: { default: LoginView, desktop: DLoginView }, meta: { public: true } },
+    { path: '/reset-password', components: { default: ResetPasswordView, desktop: ResetPasswordView }, meta: { public: true } },
     { path: '/seleziona-cassa', components: { default: CassaSelectView, desktop: DCassaSelectView }, meta: { cassaSelect: true } },
     { path: '/system', components: { default: SystemAdminView, desktop: DSystemAdminView }, meta: { title: 'Sistema', nav: 'system', system: true } },
     { path: '/', components: { default: DashboardView, desktop: DDashboardView }, meta: { title: 'Campo 2026 · Reparto', nav: 'home' } },
@@ -43,6 +46,7 @@ const router = createRouter({
     { path: '/impostazioni', components: { default: SummaryView, desktop: DSettingsView }, meta: { title: 'Impostazioni', nav: 'settings', operator: true } },
     { path: '/utenti', components: { default: UsersView, desktop: DUsersView }, meta: { title: 'Gestione utenti', nav: 'users', admin: true } },
     { path: '/rimborsi', components: { default: ReimbursementsView, desktop: DReimbursementsView }, meta: { title: 'Rimborsi', nav: 'reimbursements' } },
+    { path: '/audit', components: { default: AuditView, desktop: AuditView }, meta: { title: 'Audit', nav: 'audit', operator: true } },
   ],
 })
 

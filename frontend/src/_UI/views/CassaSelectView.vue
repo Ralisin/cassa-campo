@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import CassaManagementPanel from '@/components/CassaManagementPanel.vue'
@@ -7,6 +7,7 @@ import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
 const router = useRouter()
+const managementExpanded = ref(false)
 
 const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
 const ROLE_SEVERITY = { admin: 'success', cashier: 'warn', user: 'secondary' }
@@ -94,7 +95,24 @@ onMounted(async () => {
         @click="logout"
       />
 
-      <CassaManagementPanel v-if="session.canManageCasse" />
+      <section v-if="session.canManageCasse" class="cassa-select-management">
+        <button
+          type="button"
+          class="cassa-select-management__toggle"
+          :aria-expanded="managementExpanded"
+          @click="managementExpanded = !managementExpanded"
+        >
+          <span class="cassa-select-management__icon"><i class="pi pi-wallet" /></span>
+          <span class="min-w-0 flex-1 text-left">
+            <strong>Gestione casse</strong>
+            <small>Crea o chiudi casse del gruppo</small>
+          </span>
+          <i class="pi pi-chevron-down cassa-select-management__chevron" :class="{ 'cassa-select-management__chevron--open': managementExpanded }" />
+        </button>
+        <Transition name="movement-group">
+          <CassaManagementPanel v-if="managementExpanded" />
+        </Transition>
+      </section>
     </div>
   </main>
 </template>
@@ -147,5 +165,52 @@ onMounted(async () => {
 }
 .cassa-select-logout {
   align-self: center;
+}
+.cassa-select-management {
+  display: grid;
+  gap: 0.75rem;
+}
+.cassa-select-management__toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.cassa-select-management__icon {
+  display: grid;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 9999px;
+  background: #edf7f1;
+  color: #224f3b;
+}
+.cassa-select-management__toggle strong,
+.cassa-select-management__toggle small {
+  display: block;
+}
+.cassa-select-management__toggle strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+  font-weight: 900;
+}
+.cassa-select-management__toggle small {
+  margin-top: 0.1rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.cassa-select-management__chevron {
+  color: #94a3b8;
+  transition: transform 180ms ease;
+}
+.cassa-select-management__chevron--open {
+  transform: rotate(180deg);
 }
 </style>

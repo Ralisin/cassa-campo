@@ -2,13 +2,14 @@ import base64
 import binascii
 import json
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.audit_service import write_audit
 from app.dependencies import (
     CurrentCassa,
     CurrentMembership,
@@ -18,8 +19,13 @@ from app.dependencies import (
 )
 from app.models import Movement, MovementReimbursement, MovementType, PaymentMethod, User
 from app.notification_service import notify_admins_of_movement
-from app.receipt_storage import get_receipt_storage
-from app.schemas import MovementCreatorRead, MovementInput, MovementPage, MovementRead
+from app.schemas import (
+    MovementCreatorRead,
+    MovementInput,
+    MovementPage,
+    MovementRead,
+    MovementRestoreResult,
+)
 from app.services import apply_movement_input, movement_to_read
 
 router = APIRouter(prefix="/movements", tags=["movements"])
@@ -53,6 +59,7 @@ def get_movement_or_404(db: DbSession, movement_id: uuid.UUID, cassa_id: uuid.UU
             selectinload(Movement.receipts),
         )
         .where(Movement.id == movement_id, Movement.cassa_id == cassa_id)
+        .where(Movement.deleted_at.is_(None))
     )
     if not movement:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Movement not found")
@@ -71,7 +78,7 @@ def list_movements(
     creator: uuid.UUID | None = None,
     reimbursement: Annotated[str | None, Query(pattern="^(da_rimborsare|rimborsato|nessuno)$")] = None,
 ) -> MovementPage:
-    filters = [Movement.cassa_id == cassa.id]
+    filters = [Movement.cassa_id == cassa.id, Movement.deleted_at.is_(None)]
     if query and (term := query.strip()):
         pattern = f"%{term}%"
         filters.append(
@@ -141,6 +148,7 @@ def list_movements(
         select(User.id, User.name)
         .join(Movement, Movement.created_by == User.id)
         .where(Movement.cassa_id == cassa.id)
+        .where(Movement.deleted_at.is_(None))
         .distinct()
         .order_by(User.name)
     ).all()
@@ -150,6 +158,22 @@ def list_movements(
         total=total,
         creators=[MovementCreatorRead(id=item.id, name=item.name) for item in creators],
     )
+
+
+@router.get("/deleted", response_model=list[MovementRead])
+def list_deleted_movements(db: DbSession, membership: WritableMembership) -> list[MovementRead]:
+    movements = db.scalars(
+        select(Movement)
+        .options(
+            joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
+            joinedload(Movement.creator),
+            selectinload(Movement.receipts),
+        )
+        .where(Movement.cassa_id == membership.cassa_id, Movement.deleted_at.is_not(None))
+        .order_by(Movement.deleted_at.desc(), Movement.created_at.desc())
+        .limit(100)
+    ).unique().all()
+    return [movement_to_read(item) for item in movements]
 
 
 @router.get("/{movement_id}", response_model=MovementRead)
@@ -170,6 +194,16 @@ def create_movement(data: MovementInput, db: DbSession, membership: WritableMemb
         membership.user,
         reimbursement_requested=data.needs_reimbursement,
     )
+    write_audit(
+        db,
+        action="movement_created",
+        entity_type="movement",
+        entity_id=movement.id,
+        cassa_id=cassa.id,
+        user_id=membership.user_id,
+        summary=f"Creato movimento {movement.supplier} da € {movement.amount}",
+        details={"supplier": movement.supplier, "amount": str(movement.amount)},
+    )
     db.commit()
     db.refresh(movement)
     return movement_to_read(get_movement_or_404(db, movement.id, cassa.id))
@@ -187,6 +221,16 @@ def update_movement(
     apply_movement_input(movement, data, cassa)
     if reimbursement_requested:
         notify_admins_of_movement(db, movement, membership.user, reimbursement_requested=True)
+    write_audit(
+        db,
+        action="movement_updated",
+        entity_type="movement",
+        entity_id=movement.id,
+        cassa_id=cassa.id,
+        user_id=membership.user_id,
+        summary=f"Modificato movimento {movement.supplier}",
+        details={"supplier": movement.supplier, "amount": str(movement.amount)},
+    )
     db.commit()
     return movement_to_read(get_movement_or_404(db, movement.id, cassa.id))
 
@@ -198,10 +242,47 @@ def delete_movement(
     movement = get_movement_or_404(db, movement_id, membership.cassa_id)
     if not can_edit_movement(membership, movement.created_by):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
-    if movement.receipts:
-        storage = get_receipt_storage()
-        for receipt in movement.receipts:
-            storage.delete(receipt.storage_key)
-    db.delete(movement)
+    movement.deleted_at = datetime.now(UTC)
+    movement.deleted_by = membership.user_id
+    write_audit(
+        db,
+        action="movement_deleted",
+        entity_type="movement",
+        entity_id=movement.id,
+        cassa_id=membership.cassa_id,
+        user_id=membership.user_id,
+        summary=f"Spostato nel cestino movimento {movement.supplier}",
+        details={"supplier": movement.supplier, "amount": str(movement.amount)},
+    )
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.put("/{movement_id}/restore", response_model=MovementRestoreResult)
+def restore_movement(
+    movement_id: uuid.UUID, db: DbSession, membership: WritableMembership
+) -> MovementRestoreResult:
+    movement = db.scalar(
+        select(Movement).where(
+            Movement.id == movement_id,
+            Movement.cassa_id == membership.cassa_id,
+            Movement.deleted_at.is_not(None),
+        )
+    )
+    if not movement:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Movement not found")
+    if not can_edit_movement(membership, movement.created_by):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    movement.deleted_at = None
+    movement.deleted_by = None
+    write_audit(
+        db,
+        action="movement_restored",
+        entity_type="movement",
+        entity_id=movement.id,
+        cassa_id=membership.cassa_id,
+        user_id=membership.user_id,
+        summary=f"Ripristinato movimento {movement.supplier}",
+    )
+    db.commit()
+    return MovementRestoreResult(id=movement.id)

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
+from app.audit_service import write_audit
 from app.dependencies import CurrentCassa, DbSession, WritableOperatorMembership
 from app.models import CampCategoryBudget, CampSettings, ExpenseCategory
 from app.schemas import SettingsInput, SettingsRead
@@ -51,6 +52,16 @@ def update_settings(
             budget = CampCategoryBudget(settings_id=settings.id, category=category.slug)
             settings.category_budgets.append(budget)
         budget.amount = data.category_budgets.get(category.slug, 0)
+    write_audit(
+        db,
+        action="settings_updated",
+        entity_type="settings",
+        entity_id=settings.id,
+        cassa_id=operator.cassa_id,
+        user_id=operator.user_id,
+        summary=f"Aggiornate impostazioni {settings.camp_name}",
+        details={"camp_year": settings.camp_year, "participants": settings.participants},
+    )
     db.commit()
     db.refresh(settings)
     return SettingsRead(

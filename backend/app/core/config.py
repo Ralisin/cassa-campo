@@ -17,6 +17,15 @@ class Settings(BaseSettings):
     system_admin_email: str = "massimo@admin.it"
     system_admin_name: str = "Massimo"
     system_admin_password: str = "CassaCampo2026!"
+    vapid_public_key: str | None = None
+    vapid_private_key: str | None = None
+    vapid_claim_email: str = "admin@cassa-campo.local"
+    frontend_url: str = "http://localhost:5173"
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str = "Cassa Campo <noreply@cassa-campo.local>"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

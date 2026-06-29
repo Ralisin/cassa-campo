@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import CassaManagementPanel from '@/components/CassaManagementPanel.vue'
@@ -7,6 +7,7 @@ import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
 const router = useRouter()
+const managementExpanded = ref(false)
 
 const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
 const ROLE_SEVERITY = { admin: 'success', cashier: 'warn', user: 'secondary' }
@@ -84,7 +85,23 @@ onMounted(async () => {
         </p>
       </div>
 
-      <CassaManagementPanel v-if="session.canManageCasse" />
+      <section v-if="session.canManageCasse" class="dk-card">
+        <div class="dk-card__head">
+          <div>
+            <h2 class="dk-card__title"><i class="pi pi-wallet dk-card__title-icon" /> Gestione casse</h2>
+            <p class="dk-card__subtitle">Crea o chiudi casse del gruppo quando serve.</p>
+          </div>
+          <PButton
+            :label="managementExpanded ? 'Nascondi' : 'Apri gestione'"
+            :icon="managementExpanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"
+            outlined
+            @click="managementExpanded = !managementExpanded"
+          />
+        </div>
+        <Transition name="menu-page-fade">
+          <CassaManagementPanel v-if="managementExpanded" />
+        </Transition>
+      </section>
     </div>
   </main>
 </template>

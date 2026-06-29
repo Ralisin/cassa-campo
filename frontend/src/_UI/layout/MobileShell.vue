@@ -19,6 +19,10 @@ const {
   online,
   needRefresh,
   offlineQueue,
+  pushSupported,
+  pushEnabled,
+  pushBusy,
+  pushError,
   notificationCountLabel,
   reimbursementCountLabel,
   notificationIcon,
@@ -26,16 +30,28 @@ const {
   loadNotifications,
   loadReimbursementCount,
   syncOfflineQueue,
+  refreshPushState,
+  enablePushNotifications,
+  disablePushNotifications,
   markAllRead,
   updateApp,
 } = chrome
 
 const userMenu = ref()
 const notificationsPopover = ref()
+const moreMenuVisible = ref(false)
 
 const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
 const KIND_LABELS = { campo: 'Campo', anno: 'Anno' }
 const userMenuItems = computed(() => [
+  ...(pushSupported.value
+    ? [{
+        label: pushEnabled.value ? 'Disattiva notifiche' : 'Attiva notifiche',
+        icon: pushEnabled.value ? 'pi pi-bell-slash' : 'pi pi-bell',
+        command: () => (pushEnabled.value ? disablePushNotifications() : enablePushNotifications()),
+        disabled: pushBusy.value,
+      }]
+    : []),
   ...(session.canManageCasse
     ? [{ label: 'Casse', icon: 'pi pi-wallet', command: () => router.push('/seleziona-cassa') }]
     : session.memberships.length > 1
@@ -60,7 +76,7 @@ const userInitials = computed(() => {
   return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
 })
 
-const navItems = computed(() => {
+const allNavItems = computed(() => {
   const needsCassa = session.needsSystemCassaSelection
   return [
     ...(session.isSystemAdmin ? [{ label: 'Sistema', icon: 'pi pi-shield', to: '/system', key: 'system' }] : []),
@@ -69,14 +85,29 @@ const navItems = computed(() => {
     { label: 'Movimenti', icon: 'pi pi-list', to: '/movimenti', key: 'movements' },
     { label: 'Rimborsi', icon: 'pi pi-replay', to: '/rimborsi', key: 'reimbursements' },
     { label: 'Riepilogo', icon: 'pi pi-chart-pie', to: '/riepilogo', key: 'summary' },
+    ...(session.isOperator ? [{ label: 'Audit', icon: 'pi pi-history', to: '/audit', key: 'audit' }] : []),
     ...(session.isAdmin ? [{ label: 'Utenti', icon: 'pi pi-users', to: '/utenti', key: 'users' }] : []),
   ].map((item) => ({
     ...item,
     disabled: (needsCassa && item.key !== 'system') || (session.cassaClosed && item.key === 'new'),
   }))
 })
+const primaryNavKeys = ['home', 'new', 'movements']
+const secondaryNavItems = computed(() => allNavItems.value.filter((item) => !primaryNavKeys.includes(item.key)))
+const navItems = computed(() => [
+  ...allNavItems.value.filter((item) => primaryNavKeys.includes(item.key)),
+  {
+    label: 'Altro',
+    icon: 'pi pi-ellipsis-h',
+    key: 'more',
+    disabled: !secondaryNavItems.value.some((item) => !item.disabled),
+  },
+])
 const activeNavIndex = computed(() => Math.max(
-  navItems.value.findIndex((item) => item.key === route.meta.nav),
+  navItems.value.findIndex((item) => (
+    item.key === route.meta.nav
+    || (item.key === 'more' && secondaryNavItems.value.some((extra) => extra.key === route.meta.nav))
+  )),
   0,
 ))
 const pageDirection = ref('forward')
@@ -101,6 +132,17 @@ async function openNotification(notification) {
   await chrome.openNotification(notification, router)
 }
 
+function openMore() {
+  if (navItems.value.find((item) => item.key === 'more')?.disabled) return
+  moreMenuVisible.value = true
+}
+
+function goToMoreItem(item) {
+  if (item.disabled) return
+  moreMenuVisible.value = false
+  router.push(item.to)
+}
+
 watch(
   () => route.meta.nav,
   (next, previous) => {
@@ -118,6 +160,7 @@ watch(
 )
 
 onMounted(async () => {
+  await refreshPushState().catch(() => {})
   await loadNotifications().catch(() => {})
   await loadReimbursementCount().catch(() => {})
 })
@@ -264,6 +307,7 @@ usePolling(syncOfflineQueue, 20000)
           @click="syncOfflineQueue"
         />
       </div>
+      <PMessage v-if="pushError" severity="warn" size="small" class="mb-3">{{ pushError }}</PMessage>
       <RouterView v-slot="{ Component, route: currentRoute }">
         <Transition :name="pageTransitionName" mode="out-in">
           <component :is="Component" :key="currentRoute.fullPath" />
@@ -286,16 +330,21 @@ usePolling(syncOfflineQueue, 20000)
         <span class="mobile-tabbar__indicator-surface" />
       </span>
       <component
-        :is="item.disabled ? 'span' : RouterLink"
+        :is="item.key === 'more' || item.disabled ? 'span' : RouterLink"
         v-for="item in navItems"
         :key="item.key"
         :to="item.disabled ? undefined : item.to"
+        :role="item.key === 'more' ? 'button' : undefined"
+        :tabindex="item.key === 'more' && !item.disabled ? 0 : undefined"
         class="mobile-tabbar__item"
         :class="{
-          'mobile-tabbar__item--active': route.meta.nav === item.key,
+          'mobile-tabbar__item--active': route.meta.nav === item.key || (item.key === 'more' && secondaryNavItems.some((extra) => extra.key === route.meta.nav)),
           'mobile-tabbar__item--disabled': item.disabled,
         }"
         :aria-disabled="item.disabled ? 'true' : undefined"
+        @click="item.key === 'more' ? openMore() : undefined"
+        @keydown.enter.prevent="item.key === 'more' ? openMore() : undefined"
+        @keydown.space.prevent="item.key === 'more' ? openMore() : undefined"
       >
         <PButton
           :icon="item.icon"
@@ -316,5 +365,35 @@ usePolling(syncOfflineQueue, 20000)
         <span class="mobile-tabbar__label">{{ item.label }}</span>
       </component>
     </nav>
+
+    <PDialog
+      v-model:visible="moreMenuVisible"
+      modal
+      header="Altro"
+      class="mobile-more-dialog w-[calc(100vw-2rem)] max-w-sm"
+      :draggable="false"
+    >
+      <div class="mobile-more-list">
+        <button
+          v-for="item in secondaryNavItems"
+          :key="item.key"
+          type="button"
+          class="mobile-more-item"
+          :class="{ 'mobile-more-item--active': route.meta.nav === item.key, 'mobile-more-item--disabled': item.disabled }"
+          :disabled="item.disabled"
+          @click="goToMoreItem(item)"
+        >
+          <span class="mobile-more-item__icon"><i :class="item.icon" /></span>
+          <span class="min-w-0 flex-1 text-left">
+            <strong>{{ item.label }}</strong>
+            <small v-if="item.key === 'reimbursements' && pendingReimbursementCount">
+              {{ reimbursementCountLabel }} {{ pendingReimbursementCount === 1 ? 'rimborso da fare' : 'rimborsi da fare' }}
+            </small>
+          </span>
+          <PTag v-if="item.key === 'reimbursements' && pendingReimbursementCount" :value="reimbursementCountLabel" severity="warn" />
+          <i class="pi pi-chevron-right text-xs text-slate-400" />
+        </button>
+      </div>
+    </PDialog>
   </div>
 </template>

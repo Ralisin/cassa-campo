@@ -7,6 +7,7 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.routers import (
     auth,
+    audit,
     casse,
     dashboard,
     exports,
@@ -39,6 +40,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(audit.router)
 app.include_router(dashboard.router)
 app.include_router(movements.router)
 app.include_router(notifications.router)

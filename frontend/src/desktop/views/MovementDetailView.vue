@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { useRoute, useRouter } from 'vue-router'
 
-import { api, downloadReceipt } from '@/api'
+import { api, downloadReceipt, uploadReceipt } from '@/api'
 import StatusTag from '@/desktop/components/StatusTag.vue'
 import PageHeader from '@/desktop/components/PageHeader.vue'
 import { useSessionStore } from '@/stores/session'
@@ -14,6 +14,8 @@ const session = useSessionStore()
 const confirm = useConfirm()
 const movement = ref(null)
 const receiptBusy = ref('')
+const receiptInput = ref(null)
+const receiptError = ref('')
 const canEdit = computed(() => !session.cassaClosed && (session.isOperator || movement.value?.created_by === session.user?.id))
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const dateFormatter = new Intl.DateTimeFormat('it-IT', { dateStyle: 'long' })
@@ -32,7 +34,11 @@ const rows = computed(() => {
   ]
 })
 
-onMounted(async () => (movement.value = await api.get(`/movements/${route.params.id}`)))
+async function loadMovement() {
+  movement.value = await api.get(`/movements/${route.params.id}`)
+}
+
+onMounted(loadMovement)
 
 function confirmRemove(event) {
   confirm.require({
@@ -73,6 +79,24 @@ async function deleteReceipt(receipt) {
   try {
     await api.delete(`/movements/${movement.value.id}/receipts/${receipt.id}`)
     movement.value.receipts = movement.value.receipts.filter((item) => item.id !== receipt.id)
+  } finally {
+    receiptBusy.value = ''
+  }
+}
+
+async function selectReceipts(event) {
+  const files = Array.from(event.target.files ?? [])
+  event.target.value = ''
+  if (!files.length) return
+  receiptBusy.value = 'upload'
+  receiptError.value = ''
+  try {
+    for (const file of files) {
+      await uploadReceipt(movement.value.id, file)
+    }
+    await loadMovement()
+  } catch (cause) {
+    receiptError.value = cause instanceof Error ? cause.message : 'Caricamento scontrino non riuscito'
   } finally {
     receiptBusy.value = ''
   }
@@ -136,10 +160,15 @@ function formatBytes(bytes) {
         </div>
 
         <div class="dk-card">
-          <h3 class="dk-card__title mb-3">
-            <i class="pi pi-paperclip dk-card__title-icon" /> Scontrini
-            <span class="ml-1 text-sm font-semibold text-slate-400">({{ movement.receipts.length }})</span>
-          </h3>
+          <input ref="receiptInput" type="file" accept="image/jpeg,image/png,application/pdf" multiple class="hidden" @change="selectReceipts">
+          <div class="mb-3 flex items-center justify-between gap-3">
+            <h3 class="dk-card__title">
+              <i class="pi pi-paperclip dk-card__title-icon" /> Scontrini
+              <span class="ml-1 text-sm font-semibold text-slate-400">({{ movement.receipts.length }})</span>
+            </h3>
+            <PButton v-if="canEdit" label="Aggiungi" icon="pi pi-plus" size="small" outlined :loading="receiptBusy === 'upload'" @click="receiptInput?.click()" />
+          </div>
+          <PMessage v-if="receiptError" severity="error" size="small" class="mb-3">{{ receiptError }}</PMessage>
           <div v-if="movement.receipts.length" class="space-y-2">
             <div v-for="receipt in movement.receipts" :key="receipt.id" class="dk-receipt">
               <i :class="receipt.content_type === 'application/pdf' ? 'pi pi-file-pdf' : 'pi pi-image'" class="text-slate-500" />

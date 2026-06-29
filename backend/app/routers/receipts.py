@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
 
+from app.audit_service import write_audit
 from app.core.config import settings
 from app.dependencies import CurrentCassa, CurrentMembership, DbSession, WritableMembership, can_edit_movement
 from app.models import Membership, Movement, MovementReceipt, MovementReimbursement
@@ -25,7 +26,11 @@ def get_movement_or_404(db: DbSession, movement_id: uuid.UUID, cassa_id: uuid.UU
             joinedload(Movement.creator),
             selectinload(Movement.receipts),
         )
-        .where(Movement.id == movement_id, Movement.cassa_id == cassa_id)
+        .where(
+            Movement.id == movement_id,
+            Movement.cassa_id == cassa_id,
+            Movement.deleted_at.is_(None),
+        )
     )
     if not movement:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Movement not found")
@@ -106,6 +111,16 @@ async def upload_receipt(
         storage_key=storage_key,
     )
     db.add(receipt)
+    write_audit(
+        db,
+        action="receipt_uploaded",
+        entity_type="receipt",
+        entity_id=receipt.id,
+        cassa_id=membership.cassa_id,
+        user_id=membership.user_id,
+        summary=f"Caricato scontrino {receipt.filename}",
+        details={"movement_id": str(movement_id), "size_bytes": receipt.size_bytes},
+    )
     db.commit()
     db.refresh(receipt)
     return MovementReceiptRead.model_validate(receipt)
@@ -136,5 +151,15 @@ def delete_receipt(
     ensure_can_edit_receipts(membership, movement)
     receipt = get_receipt_or_404(db, movement_id, receipt_id)
     storage.delete(receipt.storage_key)
+    write_audit(
+        db,
+        action="receipt_deleted",
+        entity_type="receipt",
+        entity_id=receipt.id,
+        cassa_id=membership.cassa_id,
+        user_id=membership.user_id,
+        summary=f"Eliminato scontrino {receipt.filename}",
+        details={"movement_id": str(movement_id)},
+    )
     db.delete(receipt)
     db.commit()

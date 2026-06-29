@@ -99,11 +99,18 @@ function handleOffline() {
   chrome.online.value = false
 }
 
+function handleServiceWorkerMessage(event) {
+  if (event.data?.type === 'OPEN_URL' && typeof event.data.url === 'string') {
+    router.push(event.data.url)
+  }
+}
+
 onMounted(async () => {
   window.addEventListener('beforeinstallprompt', captureInstallPrompt)
   window.addEventListener('appinstalled', handleAppInstalled)
   window.addEventListener('online', handleOnline)
   window.addEventListener('offline', handleOffline)
+  navigator.serviceWorker?.addEventListener('message', handleServiceWorkerMessage)
   if (isIos) scheduleInstallDialog()
 
   if (session.authenticated && !session.user) {
@@ -121,6 +128,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('appinstalled', handleAppInstalled)
   window.removeEventListener('online', handleOnline)
   window.removeEventListener('offline', handleOffline)
+  navigator.serviceWorker?.removeEventListener('message', handleServiceWorkerMessage)
 })
 </script>
 

@@ -1,7 +1,10 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.database import SessionLocal
 from app.routers import (
     auth,
     casse,
@@ -12,11 +15,21 @@ from app.routers import (
     receipts,
     reimbursements,
     settings as settings_router,
+    system,
     transfers,
     users,
 )
+from app.system_admin import ensure_system_admin
 
-app = FastAPI(title=settings.app_name)
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    with SessionLocal() as db:
+        ensure_system_admin(db)
+    yield
+
+
+app = FastAPI(title=settings.app_name, lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -36,6 +49,7 @@ app.include_router(users.router)
 app.include_router(reimbursements.router)
 app.include_router(transfers.router)
 app.include_router(casse.router)
+app.include_router(system.router)
 
 
 @app.get("/health", tags=["health"])

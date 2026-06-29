@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
+import CassaManagementPanel from '@/components/CassaManagementPanel.vue'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
@@ -9,8 +10,9 @@ const router = useRouter()
 
 const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
 const ROLE_SEVERITY = { admin: 'success', cashier: 'warn', user: 'secondary' }
+const KIND_LABELS = { campo: 'Campo', anno: 'Anno' }
 
-const memberships = computed(() => session.memberships)
+const memberships = computed(() => [...session.memberships].sort((a, b) => Number(a.is_closed) - Number(b.is_closed) || a.kind.localeCompare(b.kind) || b.year - a.year))
 
 function roleLabel(role) {
   return ROLE_LABELS[role] ?? role
@@ -18,6 +20,10 @@ function roleLabel(role) {
 
 function unitInitials(unit) {
   return unit.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase() || unit.slice(0, 2)
+}
+
+function cassaLabel(membership) {
+  return `${KIND_LABELS[membership.kind] ?? membership.kind} ${membership.year}`
 }
 
 function choose(cassaId) {
@@ -60,8 +66,9 @@ onMounted(async () => {
           <PAvatar :label="unitInitials(membership.unit)" shape="circle" class="cassa-option__avatar" />
           <span class="min-w-0 flex-1 text-left">
             <span class="block truncate text-sm font-black text-slate-900">{{ membership.unit }}</span>
-            <span class="block truncate text-xs text-slate-500">{{ membership.group_name }}</span>
+            <span class="block truncate text-xs text-slate-500">{{ membership.group_name }} · {{ cassaLabel(membership) }}</span>
           </span>
+          <PTag v-if="membership.is_closed" value="Chiusa" severity="secondary" />
           <PTag :value="roleLabel(membership.role)" :severity="ROLE_SEVERITY[membership.role]" />
           <i class="pi pi-chevron-right text-sm text-slate-400" />
         </button>
@@ -86,6 +93,8 @@ onMounted(async () => {
         class="cassa-select-logout"
         @click="logout"
       />
+
+      <CassaManagementPanel v-if="session.canManageCasse" />
     </div>
   </main>
 </template>

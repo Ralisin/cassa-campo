@@ -9,7 +9,13 @@ from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 
-from app.dependencies import CurrentCassa, CurrentMembership, DbSession, can_edit_movement
+from app.dependencies import (
+    CurrentCassa,
+    CurrentMembership,
+    DbSession,
+    WritableMembership,
+    can_edit_movement,
+)
 from app.models import Movement, MovementReimbursement, MovementType, PaymentMethod, User
 from app.notification_service import notify_admins_of_movement
 from app.receipt_storage import get_receipt_storage
@@ -152,7 +158,7 @@ def get_movement(movement_id: uuid.UUID, db: DbSession, cassa: CurrentCassa) -> 
 
 
 @router.post("", response_model=MovementRead, status_code=status.HTTP_201_CREATED)
-def create_movement(data: MovementInput, db: DbSession, membership: CurrentMembership) -> MovementRead:
+def create_movement(data: MovementInput, db: DbSession, membership: WritableMembership) -> MovementRead:
     cassa = membership.cassa
     movement = Movement(created_by=membership.user_id)
     apply_movement_input(movement, data, cassa)
@@ -171,7 +177,7 @@ def create_movement(data: MovementInput, db: DbSession, membership: CurrentMembe
 
 @router.put("/{movement_id}", response_model=MovementRead)
 def update_movement(
-    movement_id: uuid.UUID, data: MovementInput, db: DbSession, membership: CurrentMembership
+    movement_id: uuid.UUID, data: MovementInput, db: DbSession, membership: WritableMembership
 ) -> MovementRead:
     cassa = membership.cassa
     movement = get_movement_or_404(db, movement_id, cassa.id)
@@ -187,7 +193,7 @@ def update_movement(
 
 @router.delete("/{movement_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_movement(
-    movement_id: uuid.UUID, db: DbSession, membership: CurrentMembership
+    movement_id: uuid.UUID, db: DbSession, membership: WritableMembership
 ) -> Response:
     movement = get_movement_or_404(db, movement_id, membership.cassa_id)
     if not can_edit_movement(membership, movement.created_by):

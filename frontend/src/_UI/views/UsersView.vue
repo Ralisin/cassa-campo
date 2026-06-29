@@ -118,7 +118,7 @@ function openEdit(user) {
     email: user.email,
     password: '',
     memberships: user.memberships.length
-      ? user.memberships.map((item) => ({ unit: item.unit, role: item.role }))
+      ? user.memberships.map((item) => ({ unit: item.unit, kind: item.kind, role: item.role }))
       : [{ unit: 'E/G', role: 'user' }],
   })
   submitted.value = false
@@ -135,7 +135,7 @@ async function save() {
     const payload = {
       name: form.name,
       email: form.email,
-      memberships: form.memberships.map((item) => ({ unit: item.unit, role: item.role })),
+      memberships: form.memberships.map((item) => ({ unit: item.unit, kind: item.kind, role: item.role })),
     }
     if (!editing.value || form.password) payload.password = form.password
     if (editing.value) await api.put(`/users/${editingId.value}`, payload)

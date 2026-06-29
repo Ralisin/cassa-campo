@@ -13,10 +13,10 @@ const session = useSessionStore()
 
 async function submit() {
   loading.value = true
-  error.value = ''
+    error.value = ''
   try {
     await session.login(email.value, password.value)
-    router.push('/')
+    router.push(session.isSystemAdmin ? '/system' : '/')
   } catch (cause) {
     error.value = cause instanceof Error ? cause.message : 'Accesso non riuscito'
   } finally {

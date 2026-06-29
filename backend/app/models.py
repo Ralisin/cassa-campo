@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     Enum,
@@ -17,6 +18,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+
+def current_year() -> int:
+    return date.today().year
 
 
 class UserRole(str, enum.Enum):
@@ -54,6 +59,16 @@ class Branch(str, enum.Enum):
     GRUPPO = "Gruppo"
 
 
+class CassaKind(str, enum.Enum):
+    CAMPO = "campo"
+    ANNO = "anno"
+
+
+class CassaStatus(str, enum.Enum):
+    OPEN = "aperta"
+    CLOSED = "chiusa"
+
+
 class Group(Base):
     __tablename__ = "groups"
 
@@ -69,11 +84,16 @@ class Group(Base):
 
 class Cassa(Base):
     __tablename__ = "casse"
-    __table_args__ = (UniqueConstraint("group_id", "unit", name="uq_casse_group_unit"),)
+    __table_args__ = (UniqueConstraint("group_id", "unit", "kind", "year", name="uq_casse_group_unit_kind_year"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("groups.id", ondelete="CASCADE"), index=True)
     unit: Mapped[str] = mapped_column(String(50))
+    kind: Mapped[CassaKind] = mapped_column(Enum(CassaKind), default=CassaKind.CAMPO)
+    status: Mapped[CassaStatus] = mapped_column(Enum(CassaStatus), default=CassaStatus.OPEN)
+    year: Mapped[int] = mapped_column(default=current_year)
+    opened_at: Mapped[date] = mapped_column(Date, default=date.today)
+    closed_at: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     group: Mapped[Group] = relationship(back_populates="casse")
@@ -104,6 +124,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     name: Mapped[str] = mapped_column(String(255))
     group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("groups.id"), index=True)
+    is_system_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     group: Mapped[Group] = relationship(back_populates="users")

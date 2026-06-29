@@ -99,10 +99,12 @@ export async function downloadExcel() {
     },
   })
   if (!response.ok) throw new ApiError('Esportazione non riuscita', response.status)
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const filename = disposition.match(/filename="([^"]+)"/)?.[1] || 'bilancio.xlsx'
   const url = URL.createObjectURL(await response.blob())
   const link = document.createElement('a')
   link.href = url
-  link.download = 'bilancio-campo.xlsx'
+  link.download = filename
   link.click()
   URL.revokeObjectURL(url)
 }

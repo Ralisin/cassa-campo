@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.core.config import settings
-from app.dependencies import CurrentCassa, CurrentMembership, DbSession, can_edit_movement
+from app.dependencies import CurrentCassa, CurrentMembership, DbSession, WritableMembership, can_edit_movement
 from app.models import Membership, Movement, MovementReceipt, MovementReimbursement
 from app.receipt_storage import ReceiptStorage, get_receipt_storage
 from app.schemas import MovementReceiptRead
@@ -72,7 +72,7 @@ def list_receipts(
 async def upload_receipt(
     movement_id: uuid.UUID,
     db: DbSession,
-    membership: CurrentMembership,
+    membership: WritableMembership,
     storage: Annotated[ReceiptStorage, Depends(get_receipt_storage)],
     file: UploadFile = File(...),
 ) -> MovementReceiptRead:
@@ -129,7 +129,7 @@ def delete_receipt(
     movement_id: uuid.UUID,
     receipt_id: uuid.UUID,
     db: DbSession,
-    membership: CurrentMembership,
+    membership: WritableMembership,
     storage: Annotated[ReceiptStorage, Depends(get_receipt_storage)],
 ) -> None:
     movement = get_movement_or_404(db, movement_id, membership.cassa_id)

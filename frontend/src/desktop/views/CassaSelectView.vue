@@ -2,6 +2,7 @@
 import { computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 
+import CassaManagementPanel from '@/components/CassaManagementPanel.vue'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
@@ -9,8 +10,9 @@ const router = useRouter()
 
 const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
 const ROLE_SEVERITY = { admin: 'success', cashier: 'warn', user: 'secondary' }
+const KIND_LABELS = { campo: 'Campo', anno: 'Anno' }
 
-const memberships = computed(() => session.memberships)
+const memberships = computed(() => [...session.memberships].sort((a, b) => Number(a.is_closed) - Number(b.is_closed) || a.kind.localeCompare(b.kind) || b.year - a.year))
 
 function roleLabel(role) {
   return ROLE_LABELS[role] ?? role
@@ -18,6 +20,10 @@ function roleLabel(role) {
 
 function unitInitials(unit) {
   return unit.replace(/[^A-Za-z]/g, '').slice(0, 2).toUpperCase() || unit.slice(0, 2)
+}
+
+function cassaLabel(membership) {
+  return `${KIND_LABELS[membership.kind] ?? membership.kind} ${membership.year}`
 }
 
 function choose(cassaId) {
@@ -57,10 +63,13 @@ onMounted(async () => {
         >
           <div class="dk-pick__card-top">
             <PAvatar :label="unitInitials(membership.unit)" size="large" shape="circle" class="dk-pick__unit-av" />
-            <PTag :value="roleLabel(membership.role)" :severity="ROLE_SEVERITY[membership.role]" />
+            <div class="flex flex-wrap justify-end gap-1.5">
+              <PTag v-if="membership.is_closed" value="Chiusa" severity="secondary" />
+              <PTag :value="roleLabel(membership.role)" :severity="ROLE_SEVERITY[membership.role]" />
+            </div>
           </div>
           <p class="dk-pick__card-unit">{{ membership.unit }}</p>
-          <p class="dk-pick__card-group">{{ membership.group_name }}</p>
+          <p class="dk-pick__card-group">{{ membership.group_name }} · {{ cassaLabel(membership) }}</p>
           <p class="mt-3 flex items-center gap-1.5 text-sm font-bold text-emerald-700">
             Entra <i class="pi pi-arrow-right text-xs" />
           </p>
@@ -74,6 +83,8 @@ onMounted(async () => {
           Il tuo profilo non è ancora collegato a nessuna cassa. Contatta un responsabile del gruppo.
         </p>
       </div>
+
+      <CassaManagementPanel v-if="session.canManageCasse" />
     </div>
   </main>
 </template>

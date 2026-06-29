@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload, selectinload
 
-from app.dependencies import CurrentMembership, DbSession, OperatorMembership
+from app.dependencies import CurrentMembership, DbSession, WritableOperatorMembership
 from app.models import Movement, MovementReimbursement, UserRole
 from app.notification_service import notify_reimbursement_completed
 from app.routers.movements import get_movement_or_404
@@ -53,7 +53,7 @@ def update_reimbursement(
     movement_id: uuid.UUID,
     data: ReimbursementUpdate,
     db: DbSession,
-    operator: OperatorMembership,
+    operator: WritableOperatorMembership,
 ) -> ReimbursementSummary:
     movement = get_movement_or_404(db, movement_id, operator.cassa_id)
     if not movement.reimbursement:

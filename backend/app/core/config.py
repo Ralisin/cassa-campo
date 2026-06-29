@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     supabase_secret_key: str | None = None
     supabase_storage_bucket: str = "receipts"
     max_receipt_size_mb: int = 10
+    system_admin_email: str = "massimo@admin.it"
+    system_admin_name: str = "Massimo"
+    system_admin_password: str = "CassaCampo2026!"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

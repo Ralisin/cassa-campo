@@ -166,4 +166,6 @@ onBeforeUnmount(() => {
       </div>
     </div>
   </PDialog>
+
+  <PConfirmDialog class="dk-confirm" />
 </template>

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import select
 
-from app.dependencies import CurrentCassa, DbSession, OperatorMembership
+from app.dependencies import CurrentCassa, DbSession, WritableOperatorMembership
 from app.models import CampCategoryBudget, CampSettings, ExpenseCategory
 from app.schemas import SettingsInput, SettingsRead
 
@@ -34,7 +34,7 @@ def get_settings(db: DbSession, cassa: CurrentCassa) -> SettingsRead:
 
 @router.put("", response_model=SettingsRead)
 def update_settings(
-    data: SettingsInput, db: DbSession, operator: OperatorMembership
+    data: SettingsInput, db: DbSession, operator: WritableOperatorMembership
 ) -> SettingsRead:
     settings = latest_settings(db, operator.cassa_id) or CampSettings(cassa_id=operator.cassa_id)
     for field, value in data.model_dump(exclude={"category_budgets"}).items():

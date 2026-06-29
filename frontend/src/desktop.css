@@ -82,6 +82,15 @@
 }
 .dk-nav-item:hover { background: rgba(255, 255, 255, 0.07); color: #fff; }
 .dk-nav-item--active { background: rgba(213, 157, 43, 0.16); color: #fff; }
+.dk-nav-item--disabled {
+  cursor: not-allowed;
+  color: rgba(231, 239, 232, 0.34);
+  opacity: 0.72;
+}
+.dk-nav-item--disabled:hover {
+  background: transparent;
+  color: rgba(231, 239, 232, 0.34);
+}
 .dk-nav-item--active::before {
   content: ''; position: absolute; left: -0.85rem; top: 50%; transform: translateY(-50%);
   width: 4px; height: 1.5rem; border-radius: 0 4px 4px 0; background: var(--dk-amber);
@@ -375,8 +384,8 @@
 
 /* Cassa picker (desktop grid) */
 .dk-pick { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 2.5rem; background: var(--dk-bg); }
-.dk-pick__inner { width: 100%; max-width: 56rem; }
-.dk-pick__header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.75rem; }
+.dk-pick__inner { width: 100%; max-width: 56rem; display: flex; flex-direction: column; gap: 1.5rem; }
+.dk-pick__header { display: flex; align-items: center; gap: 1rem; }
 .dk-pick__logo { width: 3rem; height: 3rem; border-radius: 0.85rem; }
 .dk-pick__title { font-size: 1.6rem; font-weight: 900; }
 .dk-pick__sub { color: var(--dk-muted); }

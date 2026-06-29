@@ -4,7 +4,7 @@ from sqlalchemy import select
 
 from app.core.database import SessionLocal
 from app.core.security import hash_password
-from app.models import Branch, Cassa, Group, Membership, User, UserRole
+from app.models import Branch, Cassa, CassaKind, CassaStatus, Group, Membership, User, UserRole
 
 
 def main() -> None:
@@ -35,10 +35,15 @@ def main() -> None:
             db.flush()
 
         cassa = db.scalar(
-            select(Cassa).where(Cassa.group_id == group.id, Cassa.unit == branch.value)
+            select(Cassa).where(
+                Cassa.group_id == group.id,
+                Cassa.unit == branch.value,
+                Cassa.kind == CassaKind.CAMPO,
+                Cassa.status == CassaStatus.OPEN,
+            )
         )
         if cassa is None:
-            cassa = Cassa(group_id=group.id, unit=branch.value)
+            cassa = Cassa(group_id=group.id, unit=branch.value, kind=CassaKind.CAMPO)
             db.add(cassa)
             db.flush()
 

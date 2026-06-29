@@ -13,6 +13,7 @@ from app.dependencies import CurrentCassa, DbSession, OperatorMembership
 from app.models import (
     BalanceType,
     Cassa,
+    CassaKind,
     Movement,
     MovementType,
     PaymentMethod,
@@ -304,14 +305,104 @@ def build_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
     return workbook
 
 
+def build_annual_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
+    entries = [
+        _movement_row(item)
+        for item in db.scalars(select(Movement).where(Movement.cassa_id == cassa.id)).all()
+    ]
+    entries.sort(key=lambda item: (item["operation_date"], item["created_at"]))
+
+    workbook = Workbook()
+    workbook.calculation.fullCalcOnLoad = True
+    workbook.calculation.forceFullCalc = True
+    sheet = workbook.active
+    sheet.title = f"Cassa Anno {cassa.year}"
+    sheet.freeze_panes = "A5"
+    sheet.sheet_view.showGridLines = True
+
+    headers = [
+        "N.°",
+        "Data reg.ne",
+        "Data oper.ne",
+        "Fornitore",
+        "Unità",
+        "Bilancio",
+        "Note",
+        "Entrate contanti",
+        "Uscite contanti",
+        "Entrate banca",
+        "Uscite banca",
+        "Saldo",
+    ]
+    widths = [6, 13, 13, 28, 10, 10, 38, 15, 15, 15, 15, 15]
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[sheet.cell(1, index).column_letter].width = width
+
+    sheet.merge_cells("A1:L1")
+    sheet["A1"] = f"Cassa Anno {cassa.unit} {cassa.year}"
+    sheet["A1"].font = Font(bold=True, size=14)
+    sheet["A1"].alignment = Alignment(horizontal="center")
+    sheet["A2"] = "Aperta"
+    sheet["B2"] = cassa.opened_at
+    sheet["D2"] = "Chiusa"
+    sheet["E2"] = cassa.closed_at
+    for coordinate in ("B2", "E2"):
+        sheet[coordinate].number_format = DATE
+
+    for column, value in enumerate(headers, start=1):
+        cell = sheet.cell(4, column)
+        cell.value = value
+        cell.fill = PatternFill("solid", fgColor=BLUE)
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        _apply_border(cell)
+
+    for index, entry in enumerate(entries, start=1):
+        row = index + 4
+        values = [
+            index,
+            entry["created_at"].date(),
+            entry["operation_date"],
+            entry["supplier"],
+            entry["unit"],
+            entry["balance_type"],
+            entry["notes"],
+            float(entry["cash_in"]) or None,
+            float(entry["cash_out"]) or None,
+            float(entry["bank_in"]) or None,
+            float(entry["bank_out"]) or None,
+        ]
+        for column, value in enumerate(values, start=1):
+            sheet.cell(row, column).value = value
+        sheet.cell(row, 12).value = f"=H{row}-I{row}+J{row}-K{row}"
+        for column in range(1, 13):
+            cell = sheet.cell(row, column)
+            _apply_border(cell, dotted=True)
+            if column in (2, 3):
+                cell.number_format = DATE
+            if column >= 8:
+                cell.number_format = EURO
+    last_row = max(5, 4 + len(entries))
+    sheet.auto_filter.ref = f"A4:L{last_row}"
+    sheet.print_area = f"A1:L{last_row}"
+    return workbook
+
+
+def build_cassa_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
+    if cassa.kind == CassaKind.ANNO:
+        return build_annual_excel_report(db, cassa)
+    return build_excel_report(db, cassa)
+
+
 @router.get("/excel")
 def export_excel(db: DbSession, cassa: CurrentCassa, _: OperatorMembership) -> StreamingResponse:
-    workbook = build_excel_report(db, cassa)
+    workbook = build_cassa_excel_report(db, cassa)
+    filename = "bilancio-anno.xlsx" if cassa.kind == CassaKind.ANNO else "bilancio-campo.xlsx"
     output = BytesIO()
     workbook.save(output)
     output.seek(0)
     return StreamingResponse(
         output,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": 'attachment; filename="bilancio-campo.xlsx"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

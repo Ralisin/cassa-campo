@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
-from app.dependencies import CurrentCassa, DbSession, OperatorMembership
+from app.dependencies import CurrentCassa, DbSession, WritableOperatorMembership
 from app.models import Cassa, TransferType, TreasuryTransfer
 from app.schemas import TransferInput, TransferRead
 from app.services import get_dashboard
@@ -84,7 +84,7 @@ def list_transfers(db: DbSession, cassa: CurrentCassa) -> list[TransferRead]:
 
 @router.post("", response_model=TransferRead, status_code=status.HTTP_201_CREATED)
 def create_transfer(
-    data: TransferInput, db: DbSession, operator: OperatorMembership
+    data: TransferInput, db: DbSession, operator: WritableOperatorMembership
 ) -> TransferRead:
     cassa = operator.cassa
     validate_available_balance(data, db, cassa)
@@ -98,7 +98,7 @@ def create_transfer(
 
 @router.put("/{transfer_id}", response_model=TransferRead)
 def update_transfer(
-    transfer_id: uuid.UUID, data: TransferInput, db: DbSession, operator: OperatorMembership
+    transfer_id: uuid.UUID, data: TransferInput, db: DbSession, operator: WritableOperatorMembership
 ) -> TransferRead:
     cassa = operator.cassa
     transfer = get_transfer_or_404(db, transfer_id, cassa.id)
@@ -110,7 +110,7 @@ def update_transfer(
 
 @router.delete("/{transfer_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_transfer(
-    transfer_id: uuid.UUID, db: DbSession, operator: OperatorMembership
+    transfer_id: uuid.UUID, db: DbSession, operator: WritableOperatorMembership
 ) -> Response:
     transfer = get_transfer_or_404(db, transfer_id, operator.cassa_id)
     db.delete(transfer)

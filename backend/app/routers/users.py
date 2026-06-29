@@ -7,7 +7,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.security import hash_password
 from app.dependencies import AdminMembership, CurrentUser, DbSession
-from app.models import Cassa, Group, Membership, User, UserRole
+from app.models import Cassa, CassaKind, CassaStatus, Group, Membership, User, UserRole
 from app.schemas import MembershipInput, UserCreate, UserRead, UserUpdate
 from app.services import user_to_read
 
@@ -32,10 +32,19 @@ def get_user_in_group_or_404(db: DbSession, user_id: uuid.UUID, group_id: uuid.U
     return user
 
 
-def ensure_cassa(db: DbSession, group_id: uuid.UUID, unit: str) -> Cassa:
-    cassa = db.scalar(select(Cassa).where(Cassa.group_id == group_id, Cassa.unit == unit))
+def ensure_cassa(
+    db: DbSession, group_id: uuid.UUID, unit: str, kind: CassaKind = CassaKind.CAMPO
+) -> Cassa:
+    cassa = db.scalar(
+        select(Cassa).where(
+            Cassa.group_id == group_id,
+            Cassa.unit == unit,
+            Cassa.kind == kind,
+            Cassa.status == CassaStatus.OPEN,
+        )
+    )
     if cassa is None:
-        cassa = Cassa(group_id=group_id, unit=unit)
+        cassa = Cassa(group_id=group_id, unit=unit, kind=kind)
         db.add(cassa)
         db.flush()
     return cassa
@@ -54,17 +63,17 @@ def validate_email_domain(email: str, group: Group) -> str:
 def sync_memberships(
     db: DbSession, user: User, group: Group, memberships: list[MembershipInput]
 ) -> None:
-    desired = {item.unit.value: item.role for item in memberships}
-    existing = {membership.cassa.unit: membership for membership in user.memberships}
+    desired = {(item.unit.value, item.kind): item.role for item in memberships}
+    existing = {(membership.cassa.unit, membership.cassa.kind): membership for membership in user.memberships}
 
-    for unit, membership in list(existing.items()):
-        if unit not in desired:
+    for key, membership in list(existing.items()):
+        if key not in desired:
             guard_last_admin(db, membership)
             user.memberships.remove(membership)
 
-    for unit, role in desired.items():
-        cassa = ensure_cassa(db, group.id, unit)
-        membership = existing.get(unit)
+    for (unit, kind), role in desired.items():
+        cassa = ensure_cassa(db, group.id, unit, kind)
+        membership = existing.get((unit, kind))
         if membership is None:
             user.memberships.append(Membership(cassa_id=cassa.id, role=role))
         elif membership.role != role:
@@ -102,19 +111,22 @@ def commit_user(db: DbSession, user: User) -> User:
 
 
 @router.get("", response_model=list[UserRead])
-def list_users(db: DbSession, admin: CurrentUser, _: AdminMembership) -> list[UserRead]:
+def list_users(db: DbSession, _admin: CurrentUser, admin_membership: AdminMembership) -> list[UserRead]:
+    group_id = admin_membership.cassa.group_id
     users = db.scalars(
         select(User)
         .options(selectinload(User.memberships).joinedload(Membership.cassa).joinedload(Cassa.group))
-        .where(User.group_id == admin.group_id)
+        .where(User.group_id == group_id, User.is_system_admin.is_(False))
         .order_by(User.name, User.email)
     ).all()
     return [user_to_read(user) for user in users]
 
 
 @router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def create_user(data: UserCreate, db: DbSession, admin: CurrentUser, _: AdminMembership) -> UserRead:
-    group = get_group_or_404(db, admin.group_id)
+def create_user(
+    data: UserCreate, db: DbSession, _admin: CurrentUser, admin_membership: AdminMembership
+) -> UserRead:
+    group = get_group_or_404(db, admin_membership.cassa.group_id)
     email = validate_email_domain(str(data.email), group)
     user = User(
         email=email,
@@ -129,10 +141,16 @@ def create_user(data: UserCreate, db: DbSession, admin: CurrentUser, _: AdminMem
 
 @router.put("/{user_id}", response_model=UserRead)
 def update_user(
-    user_id: uuid.UUID, data: UserUpdate, db: DbSession, admin: CurrentUser, _: AdminMembership
+    user_id: uuid.UUID,
+    data: UserUpdate,
+    db: DbSession,
+    _admin: CurrentUser,
+    admin_membership: AdminMembership,
 ) -> UserRead:
-    group = get_group_or_404(db, admin.group_id)
+    group = get_group_or_404(db, admin_membership.cassa.group_id)
     user = get_user_in_group_or_404(db, user_id, group.id)
+    if user.is_system_admin:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     user.email = validate_email_domain(str(data.email), group)
     user.name = data.name.strip()
     if data.password:

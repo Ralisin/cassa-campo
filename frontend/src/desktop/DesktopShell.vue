@@ -84,7 +84,5 @@ usePolling(syncOfflineQueue, 20000)
         </RouterView>
       </main>
     </div>
-
-    <PConfirmDialog class="dk-confirm" />
   </div>
 </template>

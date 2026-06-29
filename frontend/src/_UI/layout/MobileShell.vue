@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import { usePolling } from '@/composables/usePolling'
 import { useAppChrome } from '@/composables/useAppChrome'
@@ -34,9 +34,15 @@ const userMenu = ref()
 const notificationsPopover = ref()
 
 const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
+const KIND_LABELS = { campo: 'Campo', anno: 'Anno' }
 const userMenuItems = computed(() => [
-  ...(session.memberships.length > 1
-    ? [{ label: 'Cambia cassa', icon: 'pi pi-sync', command: () => router.push('/seleziona-cassa') }]
+  ...(session.canManageCasse
+    ? [{ label: 'Casse', icon: 'pi pi-wallet', command: () => router.push('/seleziona-cassa') }]
+    : session.memberships.length > 1
+      ? [{ label: 'Cambia cassa', icon: 'pi pi-sync', command: () => router.push('/seleziona-cassa') }]
+      : []),
+  ...(session.isSystemAdmin
+    ? [{ label: 'Console sistema', icon: 'pi pi-shield', command: () => router.push('/system') }]
     : []),
   { separator: true },
   {
@@ -54,14 +60,21 @@ const userInitials = computed(() => {
   return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
 })
 
-const navItems = computed(() => [
-  { label: 'Home', icon: 'pi pi-home', to: '/', key: 'home' },
-  { label: 'Inserisci', icon: 'pi pi-plus', to: '/movimenti/nuovo', key: 'new' },
-  { label: 'Movimenti', icon: 'pi pi-list', to: '/movimenti', key: 'movements' },
-  { label: 'Rimborsi', icon: 'pi pi-replay', to: '/rimborsi', key: 'reimbursements' },
-  { label: 'Riepilogo', icon: 'pi pi-chart-pie', to: '/riepilogo', key: 'summary' },
-  ...(session.isAdmin ? [{ label: 'Utenti', icon: 'pi pi-users', to: '/utenti', key: 'users' }] : []),
-])
+const navItems = computed(() => {
+  const needsCassa = session.needsSystemCassaSelection
+  return [
+    ...(session.isSystemAdmin ? [{ label: 'Sistema', icon: 'pi pi-shield', to: '/system', key: 'system' }] : []),
+    { label: 'Home', icon: 'pi pi-home', to: '/', key: 'home' },
+    { label: 'Inserisci', icon: 'pi pi-plus', to: '/movimenti/nuovo', key: 'new' },
+    { label: 'Movimenti', icon: 'pi pi-list', to: '/movimenti', key: 'movements' },
+    { label: 'Rimborsi', icon: 'pi pi-replay', to: '/rimborsi', key: 'reimbursements' },
+    { label: 'Riepilogo', icon: 'pi pi-chart-pie', to: '/riepilogo', key: 'summary' },
+    ...(session.isAdmin ? [{ label: 'Utenti', icon: 'pi pi-users', to: '/utenti', key: 'users' }] : []),
+  ].map((item) => ({
+    ...item,
+    disabled: (needsCassa && item.key !== 'system') || (session.cassaClosed && item.key === 'new'),
+  }))
+})
 const activeNavIndex = computed(() => Math.max(
   navItems.value.findIndex((item) => item.key === route.meta.nav),
   0,
@@ -132,6 +145,8 @@ usePolling(syncOfflineQueue, 20000)
                 <div v-if="session.activeCassa" class="mt-2 flex flex-wrap items-center gap-1.5">
                   <PTag :value="ROLE_LABELS[session.activeCassa.role] ?? session.activeCassa.role" severity="success" />
                   <PTag :value="session.activeCassa.unit" severity="info" />
+                  <PTag :value="`${KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind} ${session.activeCassa.year}`" severity="warn" />
+                  <PTag v-if="session.cassaClosed" value="Chiusa" severity="secondary" />
                   <PTag :value="session.activeCassa.group_name" severity="secondary" />
                 </div>
               </div>
@@ -148,7 +163,7 @@ usePolling(syncOfflineQueue, 20000)
         <div class="text-center">
           <h1 class="text-base font-black leading-tight text-slate-900">{{ route.meta.title }}</h1>
           <p v-if="session.activeCassa" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-            {{ session.activeCassa.group_name }} · {{ session.activeCassa.unit }}
+            {{ session.activeCassa.group_name }} · {{ session.activeCassa.unit }} · {{ KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind }} {{ session.activeCassa.year }}<template v-if="session.cassaClosed"> · chiusa</template>
           </p>
         </div>
       </template>
@@ -270,18 +285,24 @@ usePolling(syncOfflineQueue, 20000)
         <span class="mobile-tabbar__indicator-glow" />
         <span class="mobile-tabbar__indicator-surface" />
       </span>
-      <RouterLink
+      <component
+        :is="item.disabled ? 'span' : RouterLink"
         v-for="item in navItems"
         :key="item.key"
-        :to="item.to"
+        :to="item.disabled ? undefined : item.to"
         class="mobile-tabbar__item"
-        :class="{ 'mobile-tabbar__item--active': route.meta.nav === item.key }"
+        :class="{
+          'mobile-tabbar__item--active': route.meta.nav === item.key,
+          'mobile-tabbar__item--disabled': item.disabled,
+        }"
+        :aria-disabled="item.disabled ? 'true' : undefined"
       >
         <PButton
           :icon="item.icon"
           rounded
           :text="route.meta.nav !== item.key"
           :aria-label="item.label"
+          :disabled="item.disabled"
           class="mobile-tabbar__icon"
           :class="{ 'mobile-tabbar__icon--active': route.meta.nav === item.key }"
         />
@@ -293,7 +314,7 @@ usePolling(syncOfflineQueue, 20000)
           {{ reimbursementCountLabel }}
         </span>
         <span class="mobile-tabbar__label">{{ item.label }}</span>
-      </RouterLink>
+      </component>
     </nav>
   </div>
 </template>

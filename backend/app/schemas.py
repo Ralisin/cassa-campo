@@ -5,7 +5,16 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
-from app.models import BalanceType, Branch, MovementType, PaymentMethod, TransferType, UserRole
+from app.models import (
+    BalanceType,
+    Branch,
+    CassaKind,
+    CassaStatus,
+    MovementType,
+    PaymentMethod,
+    TransferType,
+    UserRole,
+)
 
 ExpenseCategorySlug = Literal["vitto", "alloggio", "trasporti", "varie"]
 
@@ -35,15 +44,30 @@ class CassaRead(ApiModel):
     id: uuid.UUID
     group_id: uuid.UUID
     unit: Branch
+    kind: CassaKind
+    status: CassaStatus
+    year: int
+    opened_at: date
+    closed_at: date | None
+    is_closed: bool = False
 
 
 class CassaCreate(BaseModel):
     unit: Branch
+    kind: CassaKind = CassaKind.CAMPO
+    year: int = Field(default_factory=lambda: date.today().year)
+    opened_at: date | None = None
 
 
 class MembershipRead(BaseModel):
     cassa_id: uuid.UUID
     unit: Branch
+    kind: CassaKind
+    status: CassaStatus
+    year: int
+    opened_at: date
+    closed_at: date | None
+    is_closed: bool
     role: UserRole
     group_id: uuid.UUID
     group_slug: str
@@ -55,12 +79,19 @@ class UserRead(ApiModel):
     email: EmailStr
     name: str
     group_id: uuid.UUID
+    is_system_admin: bool = False
     created_at: datetime
     memberships: list[MembershipRead] = Field(default_factory=list)
 
 
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8, max_length=72)
+
+
 class MembershipInput(BaseModel):
     unit: Branch
+    kind: CassaKind = CassaKind.CAMPO
     role: UserRole = UserRole.USER
 
 
@@ -239,3 +270,33 @@ class DashboardRead(BaseModel):
     bank_balance: Decimal
     category_summaries: list[CategorySummary]
     today_movements: list[MovementRead]
+
+
+class SystemCassaRead(ApiModel):
+    id: uuid.UUID
+    group_id: uuid.UUID
+    unit: str
+    kind: CassaKind
+    status: CassaStatus
+    year: int
+    opened_at: date
+    closed_at: date | None
+    is_closed: bool = False
+    created_at: datetime
+    movements_count: int = 0
+    cash_balance: Decimal = Decimal("0.00")
+    bank_balance: Decimal = Decimal("0.00")
+
+
+class SystemGroupRead(ApiModel):
+    id: uuid.UUID
+    slug: str
+    name: str
+    email_domain: str
+    created_at: datetime
+    users_count: int = 0
+    casse: list[SystemCassaRead] = Field(default_factory=list)
+
+
+class SystemOverview(BaseModel):
+    groups: list[SystemGroupRead]

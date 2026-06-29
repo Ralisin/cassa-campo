@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import { useAppChrome } from '@/composables/useAppChrome'
 import { useSessionStore } from '@/stores/session'
@@ -15,15 +15,23 @@ const { pendingReimbursementCount, reimbursementCountLabel } = useAppChrome()
 const userMenu = ref()
 
 const ROLE_LABELS = { admin: 'Admin', cashier: 'Cassiere', user: 'Utente' }
+const KIND_LABELS = { campo: 'Campo', anno: 'Anno' }
 
-const navItems = computed(() => [
-  { label: 'Dashboard', icon: 'pi pi-th-large', to: '/', key: 'home' },
-  { label: 'Movimenti', icon: 'pi pi-list', to: '/movimenti', key: 'movements' },
-  { label: 'Rimborsi', icon: 'pi pi-replay', to: '/rimborsi', key: 'reimbursements', badge: true },
-  { label: 'Riepilogo', icon: 'pi pi-chart-pie', to: '/riepilogo', key: 'summary' },
-  ...(session.isOperator ? [{ label: 'Impostazioni', icon: 'pi pi-sliders-h', to: '/impostazioni', key: 'settings' }] : []),
-  ...(session.isAdmin ? [{ label: 'Utenti', icon: 'pi pi-users', to: '/utenti', key: 'users' }] : []),
-])
+const navItems = computed(() => {
+  const needsCassa = session.needsSystemCassaSelection
+  return [
+    ...(session.isSystemAdmin ? [{ label: 'Sistema', icon: 'pi pi-shield', to: '/system', key: 'system' }] : []),
+    { label: 'Dashboard', icon: 'pi pi-th-large', to: '/', key: 'home' },
+    { label: 'Movimenti', icon: 'pi pi-list', to: '/movimenti', key: 'movements' },
+    { label: 'Rimborsi', icon: 'pi pi-replay', to: '/rimborsi', key: 'reimbursements', badge: true },
+    { label: 'Riepilogo', icon: 'pi pi-chart-pie', to: '/riepilogo', key: 'summary' },
+    ...(session.isOperator ? [{ label: 'Impostazioni', icon: 'pi pi-sliders-h', to: '/impostazioni', key: 'settings' }] : []),
+    ...(session.isAdmin ? [{ label: 'Utenti', icon: 'pi pi-users', to: '/utenti', key: 'users' }] : []),
+  ].map((item) => ({
+    ...item,
+    disabled: needsCassa && item.key !== 'system',
+  }))
+})
 
 const userInitials = computed(() => {
   const name = session.user?.name?.trim()
@@ -32,8 +40,13 @@ const userInitials = computed(() => {
 })
 
 const userMenuItems = computed(() => [
-  ...(session.memberships.length > 1
-    ? [{ label: 'Cambia cassa', icon: 'pi pi-sync', command: () => router.push('/seleziona-cassa') }]
+  ...(session.canManageCasse
+    ? [{ label: 'Casse', icon: 'pi pi-wallet', command: () => router.push('/seleziona-cassa') }]
+    : session.memberships.length > 1
+      ? [{ label: 'Cambia cassa', icon: 'pi pi-sync', command: () => router.push('/seleziona-cassa') }]
+      : []),
+  ...(session.isSystemAdmin
+    ? [{ label: 'Console sistema', icon: 'pi pi-shield', command: () => router.push('/system') }]
     : []),
   { separator: true },
   {
@@ -61,13 +74,18 @@ const userMenuItems = computed(() => [
     </div>
 
     <nav class="dk-side__nav">
-      <RouterLink
+      <component
+        :is="item.disabled ? 'span' : RouterLink"
         v-for="item in navItems"
         :key="item.key"
-        v-tooltip.right="collapsed ? item.label : null"
-        :to="item.to"
+        v-tooltip.right="collapsed ? (item.disabled ? `${item.label} · seleziona una cassa` : item.label) : null"
+        :to="item.disabled ? undefined : item.to"
         class="dk-nav-item"
-        :class="{ 'dk-nav-item--active': route.meta.nav === item.key }"
+        :class="{
+          'dk-nav-item--active': route.meta.nav === item.key,
+          'dk-nav-item--disabled': item.disabled,
+        }"
+        :aria-disabled="item.disabled ? 'true' : undefined"
       >
         <span class="dk-nav-item__icon"><i :class="item.icon" /></span>
         <span v-if="!collapsed" class="dk-nav-item__label">{{ item.label }}</span>
@@ -76,7 +94,7 @@ const userMenuItems = computed(() => [
           class="dk-nav-item__badge"
           :class="{ 'dk-nav-item__badge--dot': collapsed }"
         >{{ collapsed ? '' : reimbursementCountLabel }}</span>
-      </RouterLink>
+      </component>
     </nav>
 
     <div class="dk-side__footer">
@@ -85,7 +103,7 @@ const userMenuItems = computed(() => [
         <span v-if="!collapsed" class="dk-side__user-info">
           <span class="dk-side__user-name">{{ session.user?.name ?? 'Utente' }}</span>
           <span v-if="session.activeCassa" class="dk-side__user-meta">
-            {{ session.activeCassa.unit }} · {{ ROLE_LABELS[session.activeCassa.role] ?? session.activeCassa.role }}
+            {{ session.activeCassa.unit }} · {{ KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind }} {{ session.activeCassa.year }}
           </span>
         </span>
         <i v-if="!collapsed" class="pi pi-ellipsis-v dk-side__user-caret" />
@@ -100,6 +118,8 @@ const userMenuItems = computed(() => [
               <div v-if="session.activeCassa" class="mt-2 flex flex-wrap items-center gap-1.5">
                 <PTag :value="ROLE_LABELS[session.activeCassa.role] ?? session.activeCassa.role" severity="success" />
                 <PTag :value="session.activeCassa.unit" severity="info" />
+                <PTag :value="`${KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind} ${session.activeCassa.year}`" severity="warn" />
+                <PTag v-if="session.cassaClosed" value="Chiusa" severity="secondary" />
                 <PTag :value="session.activeCassa.group_name" severity="secondary" />
               </div>
             </div>

@@ -7,7 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from app.models import UserRole
+from app.models import CassaStatus, Membership, UserRole
 
 
 def expense(**override) -> dict:
@@ -246,7 +246,131 @@ def test_cannot_remove_last_admin_of_a_cassa(client, scenario, auth):
 
 def test_casse_listing_and_creation(client, scenario, auth):
     headers = auth("massimo@roma108.it", scenario["eg"])
-    units = {c["unit"] for c in client.get("/casse", headers=headers).json()}
+    casse = client.get("/casse", headers=headers).json()
+    units = {c["unit"] for c in casse}
     assert units == {"E/G", "L/C"}
-    assert client.post("/casse", json={"unit": "R/S"}, headers=headers).status_code == 201
-    assert client.post("/casse", json={"unit": "E/G"}, headers=headers).status_code == 409
+    assert {c["kind"] for c in casse} == {"campo"}
+    assert {c["status"] for c in casse} == {"aperta"}
+    rs_campo = client.post("/casse", json={"unit": "R/S", "kind": "campo", "year": 2026}, headers=headers)
+    assert rs_campo.status_code == 201
+    created = client.post("/casse", json={"unit": "R/S", "kind": "anno", "year": 2026}, headers=headers)
+    assert created.status_code == 201
+    assert created.json()["kind"] == "anno"
+    assert client.post("/casse", json={"unit": "R/S", "kind": "anno", "year": 2027}, headers=headers).status_code == 409
+
+
+def test_cashier_can_manage_casse(client, scenario, auth):
+    headers = auth("luca@roma108.it", scenario["eg"])
+    created = client.post("/casse", json={"unit": "E/G", "kind": "anno", "year": 2026}, headers=headers)
+    assert created.status_code == 201
+    assert created.json()["kind"] == "anno"
+    assert client.put(f"/casse/{created.json()['id']}/close", headers=headers).status_code == 200
+
+
+def test_operator_cannot_close_cassa_where_they_are_plain_user(client, scenario, auth, db):
+    db.add(Membership(user_id=scenario["massimo"].id, cassa_id=scenario["lc"].id, role=UserRole.USER))
+    db.flush()
+    headers = auth("massimo@roma108.it", scenario["eg"])
+    assert client.put(f"/casse/{scenario['lc'].id}/close", headers=headers).status_code == 403
+
+
+def test_closed_cassa_is_read_only_and_next_year_can_be_opened(client, scenario, auth, db):
+    headers = auth("massimo@roma108.it", scenario["eg"])
+    client.post("/movements", json=expense(supplier="Storico"), headers=headers)
+
+    assert client.put(f"/casse/{scenario['lc'].id}/close", headers=headers).status_code == 200
+    close = client.put(f"/casse/{scenario['eg'].id}/close", headers=headers)
+    assert close.status_code == 200
+    assert close.json()["status"] == "chiusa"
+    db.refresh(scenario["eg"])
+    assert scenario["eg"].status == CassaStatus.CLOSED
+
+    assert client.get("/movements", headers=headers).json()["total"] == 1
+    assert client.post("/movements", json=expense(supplier="Bloccato"), headers=headers).status_code == 403
+    assert client.put("/settings", json={
+        "camp_year": 2027,
+        "camp_name": "Campo chiuso",
+        "participants": 1,
+        "quota_per_person": "1.00",
+        "cash_initial": "0.00",
+        "category_budgets": {},
+    }, headers=headers).status_code == 403
+
+    new_cassa = client.post(
+        "/casse",
+        json={"unit": "E/G", "kind": "campo", "year": scenario["eg"].year + 1},
+        headers=headers,
+    )
+    assert new_cassa.status_code == 201
+    assert new_cassa.json()["status"] == "aperta"
+
+
+# --- System administrator --------------------------------------------------
+
+def test_system_admin_is_bootstrapped_and_hidden_from_group_admins(client, scenario, auth, db):
+    system_headers = auth("massimo@admin.it", password="CassaCampo2026!")
+    me = client.get("/auth/me", headers=system_headers).json()
+    assert me["is_system_admin"] is True
+    assert me["memberships"] == []
+
+    scenario["massimo"].is_system_admin = True
+    db.flush()
+    users = client.get("/users", headers=auth("akela@roma108.it", scenario["lc"])).json()
+    assert "massimo@roma108.it" not in {user["email"] for user in users}
+
+
+def test_system_admin_can_open_any_cassa_without_membership(client, scenario, auth):
+    headers = auth("massimo@admin.it", scenario["milano_eg"], password="CassaCampo2026!")
+    res = client.get("/dashboard", headers=headers)
+    assert res.status_code == 200
+
+
+def test_system_admin_manages_users_for_selected_group(client, scenario, auth):
+    headers = auth("massimo@admin.it", scenario["eg"], password="CassaCampo2026!")
+    users = client.get("/users", headers=headers).json()
+    assert {user["email"] for user in users} == {
+        "massimo@roma108.it",
+        "luca@roma108.it",
+        "carlo@roma108.it",
+        "akela@roma108.it",
+    }
+
+    res = client.post(
+        "/users",
+        json={
+            "email": "sistema-crea@roma108.it",
+            "name": "Creato da sistema",
+            "password": "password123",
+            "memberships": [{"unit": "E/G", "role": "cashier"}],
+        },
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert res.json()["group_id"] == str(scenario["roma"].id)
+
+
+def test_system_overview_and_group_delete(client, scenario, auth):
+    headers = auth("massimo@admin.it", password="CassaCampo2026!")
+    overview = client.get("/system/overview", headers=headers).json()
+    assert {group["slug"] for group in overview["groups"]} == {"milano1", "roma108"}
+
+    milano_id = next(group["id"] for group in overview["groups"] if group["slug"] == "milano1")
+    assert client.delete(f"/system/groups/{milano_id}", headers=headers).status_code == 204
+    overview = client.get("/system/overview", headers=headers).json()
+    assert {group["slug"] for group in overview["groups"]} == {"roma108"}
+
+
+def test_system_admin_can_delete_single_cassa(client, scenario, auth):
+    system_headers = auth("massimo@admin.it", password="CassaCampo2026!")
+    assert client.delete(f"/system/casse/{scenario['lc'].id}", headers=system_headers).status_code == 204
+
+    overview = client.get("/system/overview", headers=system_headers).json()
+    roma = next(group for group in overview["groups"] if group["slug"] == "roma108")
+    assert {cassa["id"] for cassa in roma["casse"]} == {str(scenario["eg"].id)}
+
+
+def test_non_system_admin_cannot_use_system_api(client, scenario, auth):
+    res = client.get("/system/overview", headers=auth("massimo@roma108.it", scenario["eg"]))
+    assert res.status_code == 403
+    delete_res = client.delete(f"/system/casse/{scenario['lc'].id}", headers=auth("massimo@roma108.it", scenario["eg"]))
+    assert delete_res.status_code == 403

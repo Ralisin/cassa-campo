@@ -10,6 +10,7 @@ from app.models import (
     CampCategoryBudget,
     CampSettings,
     Cassa,
+    CassaStatus,
     ExpenseCategory,
     Movement,
     MovementReimbursement,
@@ -21,6 +22,7 @@ from app.models import (
 )
 from app.schemas import (
     CategorySummary,
+    CassaRead,
     DashboardRead,
     MembershipRead,
     MovementInput,
@@ -37,17 +39,38 @@ def camp_today() -> date:
     return datetime.now(CAMP_TIMEZONE).date()
 
 
+def cassa_to_read(cassa: Cassa) -> CassaRead:
+    return CassaRead(
+        id=cassa.id,
+        group_id=cassa.group_id,
+        unit=cassa.unit,
+        kind=cassa.kind,
+        status=cassa.status,
+        year=cassa.year,
+        opened_at=cassa.opened_at,
+        closed_at=cassa.closed_at,
+        is_closed=cassa.status == CassaStatus.CLOSED,
+    )
+
+
 def user_to_read(user: User) -> UserRead:
     return UserRead(
         id=user.id,
         email=user.email,
         name=user.name,
         group_id=user.group_id,
+        is_system_admin=user.is_system_admin,
         created_at=user.created_at,
         memberships=[
             MembershipRead(
                 cassa_id=membership.cassa_id,
                 unit=membership.cassa.unit,
+                kind=membership.cassa.kind,
+                status=membership.cassa.status,
+                year=membership.cassa.year,
+                opened_at=membership.cassa.opened_at,
+                closed_at=membership.cassa.closed_at,
+                is_closed=membership.cassa.status == CassaStatus.CLOSED,
                 role=membership.role,
                 group_id=membership.cassa.group_id,
                 group_slug=membership.cassa.group.slug,

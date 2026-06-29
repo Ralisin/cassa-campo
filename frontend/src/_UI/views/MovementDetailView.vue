@@ -10,7 +10,7 @@ const session = useSessionStore()
 const movement = ref(null)
 const receiptBusy = ref('')
 const canEdit = computed(
-  () => session.isOperator || movement.value?.created_by === session.user?.id,
+  () => !session.cassaClosed && (session.isOperator || movement.value?.created_by === session.user?.id),
 )
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const rows = [

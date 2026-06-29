@@ -14,7 +14,7 @@ const session = useSessionStore()
 const confirm = useConfirm()
 const movement = ref(null)
 const receiptBusy = ref('')
-const canEdit = computed(() => session.isOperator || movement.value?.created_by === session.user?.id)
+const canEdit = computed(() => !session.cassaClosed && (session.isOperator || movement.value?.created_by === session.user?.id))
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const dateFormatter = new Intl.DateTimeFormat('it-IT', { dateStyle: 'long' })
 const rows = computed(() => {

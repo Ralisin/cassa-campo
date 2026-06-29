@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 
 import { api } from '@/api'
 import MovementCard from '@/_UI/components/MovementCard.vue'
+import MovementCardSkeleton from '@/_UI/components/MovementCardSkeleton.vue'
 import { usePolling } from '@/composables/usePolling'
 import { useSessionStore } from '@/stores/session'
 
@@ -119,5 +120,24 @@ usePolling(load)
         </div>
       </template>
     </PCard>
+  </main>
+
+  <main v-else class="space-y-4">
+    <section class="grid grid-cols-2 gap-3">
+      <PCard v-for="n in 2" :key="n" class="reimbursement-summary-card">
+        <template #content>
+          <Skel circle w="2.5rem" h="2.5rem" />
+          <Skel w="70%" h="0.7rem" class="mt-3" />
+          <Skel w="55%" h="1.3rem" r="0.5rem" class="mt-2" />
+          <Skel w="40%" h="0.7rem" class="mt-2" />
+        </template>
+      </PCard>
+    </section>
+    <PCard class="reimbursement-filters">
+      <template #content><Skel w="100%" h="2.6rem" r="0.7rem" /></template>
+    </PCard>
+    <section class="space-y-3">
+      <MovementCardSkeleton v-for="n in 4" :key="n" />
+    </section>
   </main>
 </template>

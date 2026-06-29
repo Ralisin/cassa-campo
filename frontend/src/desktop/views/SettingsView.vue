@@ -67,7 +67,25 @@ onMounted(load)
     <PMessage v-if="success" severity="success" size="small" class="mb-3">Impostazioni salvate.</PMessage>
     <PMessage v-if="error" severity="error" size="small" class="mb-3">{{ error }}</PMessage>
 
-    <div class="dk-form-grid">
+    <div v-if="loading" class="dk-form-grid">
+      <div class="dk-stack">
+        <section v-for="card in 3" :key="card" class="dk-card">
+          <Skel w="11rem" h="1.05rem" class="mb-4" />
+          <div class="dk-field-row">
+            <div v-for="n in 2" :key="n" class="dk-field"><Skel w="6rem" h="0.75rem" /><Skel w="100%" h="2.75rem" class="mt-2" /></div>
+          </div>
+        </section>
+      </div>
+      <div class="dk-card">
+        <Skel w="12rem" h="1.05rem" class="mb-4" />
+        <div class="dk-define">
+          <div v-for="n in 4" :key="n" class="dk-define__row"><Skel circle w="1.1rem" h="1.1rem" /><Skel w="7rem" h="0.8rem" style="flex: 1" /><Skel w="5rem" h="0.85rem" /></div>
+        </div>
+        <Skel w="100%" h="2.75rem" r="0.7rem" class="mt-5" />
+      </div>
+    </div>
+
+    <div v-else class="dk-form-grid">
       <div class="dk-stack">
         <section class="dk-card">
           <h3 class="dk-card__title mb-4"><i class="pi pi-calendar dk-card__title-icon" /> Dati del campo</h3>

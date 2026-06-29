@@ -34,8 +34,11 @@ import Toolbar from 'primevue/toolbar'
 import ToggleSwitch from 'primevue/toggleswitch'
 
 import App from '@/_UI/layout/App.vue'
+import Skel from '@/components/Skel.vue'
 import router from './router'
+import '@fontsource-variable/inter'
 import 'primeicons/primeicons.css'
+import './tokens.css'
 import './style.css'
 import './desktop.css'
 
@@ -95,6 +98,7 @@ const app = createApp(App)
   .component('PTextarea', Textarea)
   .component('PToolbar', Toolbar)
   .component('PToggleSwitch', ToggleSwitch)
+  .component('Skel', Skel)
 
 // Mount only after the router has resolved the initial navigation (incl. the
 // auth guard's loadUser). This avoids the flash where the desktop shell renders

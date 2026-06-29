@@ -156,4 +156,28 @@ function formatBytes(bytes) {
       </div>
     </div>
   </div>
+
+  <div v-else>
+    <div class="dk-page-header">
+      <div><Skel w="14rem" h="1.35rem" /><Skel w="9rem" h="0.85rem" class="mt-2" /></div>
+    </div>
+    <div class="dk-form-grid">
+      <div class="dk-card">
+        <div class="flex items-center gap-4 border-b border-slate-100 pb-5">
+          <Skel w="3.4rem" h="3.4rem" r="0.9rem" />
+          <div class="min-w-0 flex-1"><Skel w="60%" h="1.3rem" /><Skel w="8rem" h="1.4rem" r="0.5rem" class="mt-2" /></div>
+          <Skel w="6rem" h="1.5rem" />
+        </div>
+        <div class="dk-define mt-2">
+          <div v-for="n in 8" :key="n" class="dk-define__row"><Skel circle w="1.1rem" h="1.1rem" /><Skel w="8rem" h="0.8rem" style="flex: 1" /><Skel w="6rem" h="0.85rem" /></div>
+        </div>
+      </div>
+      <div class="dk-stack">
+        <div class="dk-card">
+          <Skel w="7rem" h="1rem" class="mb-3" />
+          <Skel v-for="n in 2" :key="n" w="100%" h="3rem" r="0.7rem" class="mt-2" />
+        </div>
+      </div>
+    </div>
+  </div>
 </template>

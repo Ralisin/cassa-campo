@@ -6,22 +6,10 @@
    ========================================================================== */
 
 .dk-shell {
+  /* Layout-only. All colour/elevation tokens now live in tokens.css (:root)
+     so the login + cassa-picker screens, which render outside .dk-shell, also
+     resolve the same --dk-* values. */
   --dk-side-w: 264px;
-  --dk-bg: #eef2ec;
-  --dk-surface: #ffffff;
-  --dk-surface-soft: #f6f8f5;
-  --dk-border: rgba(18, 55, 42, 0.10);
-  --dk-border-strong: rgba(18, 55, 42, 0.18);
-  --dk-text: #15281d;
-  --dk-muted: #5b6b62;
-  --dk-faint: #8a978f;
-  --dk-forest: #12372a;
-  --dk-moss: #436850;
-  --dk-amber: #d59d2b;
-  --dk-cream: #f4f1e8;
-  --dk-ring: rgba(52, 125, 89, 0.35);
-  --dk-shadow: 0 18px 44px -30px rgba(18, 55, 42, 0.55);
-  --dk-shadow-sm: 0 2px 6px -3px rgba(18, 55, 42, 0.3);
 
   display: grid;
   grid-template-columns: var(--dk-side-w) minmax(0, 1fr);
@@ -217,9 +205,20 @@
   background: var(--dk-surface); border: 1px solid var(--dk-border);
   border-radius: 1.1rem; padding: 1.15rem 1.25rem; box-shadow: var(--dk-shadow);
   position: relative; overflow: hidden;
+  container-type: inline-size;
 }
-.dk-kpi::after { content: ''; position: absolute; inset: 0 auto 0 0; width: 4px; background: var(--dk-kpi-accent, var(--dk-moss)); }
-.dk-kpi__icon { width: 3rem; height: 3rem; border-radius: 0.9rem; display: grid; place-items: center; font-size: 1.25rem; flex: none; background: var(--dk-kpi-soft, #eef7f1); color: var(--dk-kpi-accent, var(--dk-moss)); }
+.dk-kpi__body { min-width: 0; }
+.dk-kpi__value { white-space: nowrap; }
+/* When a KPI card is squeezed (e.g. the two method cards inside the narrow
+   right column of the summary's 2-up dash grid), scale the icon and figure
+   down so the amount never gets clipped by the card's overflow. */
+.dk-kpi { transition: transform 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease; }
+.dk-kpi:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); border-color: var(--dk-border-strong); }
+.dk-kpi::after {
+  content: ''; position: absolute; inset: 0 auto 0 0; width: 3px;
+  background: linear-gradient(180deg, var(--dk-kpi-accent, var(--dk-moss)), transparent 130%);
+}
+.dk-kpi__icon { width: 3rem; height: 3rem; border-radius: 0.9rem; display: grid; place-items: center; font-size: 1.25rem; flex: none; background: var(--dk-kpi-soft, #eef7f1); color: var(--dk-kpi-accent, var(--dk-moss)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--dk-kpi-accent, var(--dk-moss)) 14%, transparent); }
 .dk-kpi__label { font-size: 0.74rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dk-faint); }
 .dk-kpi__value { font-size: 1.55rem; font-weight: 900; letter-spacing: -0.02em; margin-top: 0.1rem; color: var(--dk-kpi-accent, var(--dk-text)); }
 .dk-kpi__hint { font-size: 0.76rem; color: var(--dk-muted); margin-top: 0.15rem; }
@@ -228,6 +227,22 @@
 .dk-kpi--blue { --dk-kpi-accent: #1d4ed8; --dk-kpi-soft: #e8effc; }
 .dk-kpi--amber { --dk-kpi-accent: #b45309; --dk-kpi-soft: #fdf1dd; }
 .dk-kpi--red { --dk-kpi-accent: #b91c1c; --dk-kpi-soft: #fdeaea; }
+
+/* When a KPI card is squeezed (e.g. the two method cards inside the narrow
+   right column of the summary's 2-up dash grid), scale the icon and figure
+   down so the amount never gets clipped by the card's overflow. Placed after
+   the base rules so these win when the container condition matches. */
+@container (max-width: 250px) {
+  .dk-kpi { gap: 0.7rem; padding: 1rem 0.9rem; }
+  .dk-kpi__icon { width: 2.4rem; height: 2.4rem; font-size: 1.05rem; border-radius: 0.7rem; }
+  .dk-kpi__value { font-size: 1.2rem; }
+}
+@container (max-width: 200px) {
+  .dk-kpi { gap: 0.55rem; padding: 0.85rem 0.8rem; }
+  .dk-kpi__icon { width: 2.1rem; height: 2.1rem; font-size: 0.95rem; }
+  .dk-kpi__value { font-size: 1.05rem; }
+  .dk-kpi__label { font-size: 0.66rem; letter-spacing: 0.04em; }
+}
 
 /* Chart card */
 .dk-chart-card__body { min-height: 240px; display: flex; }
@@ -247,6 +262,8 @@
 .dk-table.p-datatable .p-datatable-tbody > tr > td { border-color: var(--dk-border); padding: 0.65rem 0.9rem; font-size: 0.88rem; }
 .dk-table.p-datatable .p-datatable-tbody > tr.dk-table__row { cursor: pointer; }
 .dk-table.p-datatable .p-datatable-tbody > tr:hover { background: #f4f8f5; }
+.dk-table--loading.p-datatable .p-datatable-tbody > tr.dk-table__row { cursor: default; }
+.dk-table--loading.p-datatable .p-datatable-tbody > tr:hover { background: transparent; }
 .dk-table .justify-end { justify-content: flex-end; }
 .dk-table__empty { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 2.5rem 1rem; color: var(--dk-faint); }
 .dk-table__empty i { font-size: 1.7rem; }
@@ -285,6 +302,18 @@
 .dk-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.9rem; }
 .dk-field__hint { font-size: 0.72rem; color: var(--dk-faint); }
 .dk-field__error { font-size: 0.74rem; font-weight: 600; color: #dc2626; }
+
+/* Brand-tinted form controls (default PrimeVue borders are a cool grey that
+   reads slightly foreign against the warm green surfaces). */
+.dk-form-grid :is(.p-inputtext, .p-inputnumber-input, .p-textarea, .p-select, .p-datepicker-input) {
+  border-color: #cdd9d1;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.dk-form-grid :is(.p-inputtext, .p-inputnumber-input, .p-textarea):hover:not(:disabled),
+.dk-form-grid .p-select:not(.p-disabled):hover,
+.dk-form-grid .p-datepicker:hover .p-datepicker-input:not(:disabled) {
+  border-color: var(--dk-moss);
+}
 
 /* Login (desktop split) */
 .dk-login { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; grid-template-rows: 1fr; }
@@ -351,10 +380,25 @@
 /* Loading skeleton helper */
 .dk-skeleton { border-radius: 1.1rem; }
 
-/* Transition */
-.dk-fade-enter-active, .dk-fade-leave-active { transition: opacity 0.18s ease, transform 0.18s ease; }
-.dk-fade-enter-from { opacity: 0; transform: translateY(6px); }
-.dk-fade-leave-to { opacity: 0; transform: translateY(-4px); }
+/* Skeleton layout helpers — rebuild the real shapes (chart, rows, doughnut). */
+.dk-skel-bars { height: 260px; display: flex; align-items: flex-end; gap: 0.7rem; padding: 0.5rem 0.25rem 0; }
+.dk-skel-bars > .skel { flex: 1; }
+.dk-skel-rows { display: flex; flex-direction: column; }
+.dk-skel-row { display: flex; align-items: center; gap: 0.65rem; padding: 0.7rem 0.1rem; border-top: 1px solid var(--dk-border); }
+.dk-skel-row:first-child { border-top: none; }
+.dk-skel-doughnut { min-height: 260px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.1rem; }
+.dk-skel-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.75rem 1.1rem; }
+
+/* Page transition — quick, soft exit then a smooth, settled entrance. The
+   asymmetric timing (fast leave / eased enter) keeps navigation feeling
+   responsive without the content "popping" into place. */
+.dk-fade-enter-active { transition: opacity 0.28s ease, transform 0.34s cubic-bezier(0.22, 1, 0.36, 1); }
+.dk-fade-leave-active { transition: opacity 0.13s ease, transform 0.13s ease; }
+.dk-fade-enter-from { opacity: 0; transform: translateY(12px) scale(0.992); }
+.dk-fade-leave-to { opacity: 0; transform: translateY(-6px) scale(0.996); }
+@media (prefers-reduced-motion: reduce) {
+  .dk-fade-enter-active, .dk-fade-leave-active { transition-duration: 1ms !important; }
+}
 
 /* IconField: make sure the text clears the leading icon (login, searches).
    style.css sets `padding: ... !important` on every input, which defeats both

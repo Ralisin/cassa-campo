@@ -8,6 +8,7 @@ import { useSessionStore } from '@/stores/session'
 const session = useSessionStore()
 const router = useRouter()
 const users = ref([])
+const loading = ref(true)
 const dialogVisible = ref(false)
 const saving = ref(false)
 const submitted = ref(false)
@@ -95,7 +96,11 @@ function removeMembership(index) {
 }
 
 async function loadUsers() {
-  users.value = await api.get('/users')
+  try {
+    users.value = await api.get('/users')
+  } finally {
+    loading.value = false
+  }
 }
 
 function openCreate() {
@@ -190,7 +195,22 @@ onMounted(loadUsers)
       </template>
     </PCard>
 
-    <PDataView :value="sortedUsers" class="movement-data-view">
+    <div v-if="loading && !users.length" class="space-y-2" aria-hidden="true">
+      <PCard v-for="n in 5" :key="n" class="user-list-card">
+        <template #content>
+          <div class="flex items-center gap-3">
+            <Skel circle w="2.75rem" h="2.75rem" />
+            <div class="min-w-0 flex-1">
+              <Skel w="45%" h="0.85rem" />
+              <Skel w="65%" h="0.7rem" class="mt-2" />
+              <div class="mt-2 flex gap-1.5"><Skel w="5rem" h="1.3rem" r="0.5rem" /><Skel w="4rem" h="1.3rem" r="0.5rem" /></div>
+            </div>
+          </div>
+        </template>
+      </PCard>
+    </div>
+
+    <PDataView v-else :value="sortedUsers" class="movement-data-view">
       <template #list="{ items }">
         <div class="space-y-2">
           <PCard v-for="user in items" :key="user.id" class="user-list-card cursor-pointer" @click="openEdit(user)">

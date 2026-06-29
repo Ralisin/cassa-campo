@@ -11,6 +11,7 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const editing = computed(() => typeof route.params.id === 'string')
+const loading = ref(typeof route.params.id === 'string')
 const saving = ref(false)
 const error = ref('')
 const offlineNotice = ref('')
@@ -104,13 +105,17 @@ onMounted(async () => {
     form.unit = session.activeCassa?.unit ?? ''
     return
   }
-  const movement = await api.get(`/movements/${route.params.id}`)
-  if (!session.isOperator && movement.created_by !== session.user?.id) {
-    router.replace(`/movimenti/${route.params.id}`)
-    return
+  try {
+    const movement = await api.get(`/movements/${route.params.id}`)
+    if (!session.isOperator && movement.created_by !== session.user?.id) {
+      router.replace(`/movimenti/${route.params.id}`)
+      return
+    }
+    Object.assign(form, movement, { amount: Number(movement.amount) })
+    form.unit = session.activeCassa?.unit ?? form.unit
+  } finally {
+    loading.value = false
   }
-  Object.assign(form, movement, { amount: Number(movement.amount) })
-  form.unit = session.activeCassa?.unit ?? form.unit
 })
 
 async function submit() {
@@ -171,7 +176,26 @@ function formatBytes(bytes) {
       </template>
     </PageHeader>
 
-    <form class="dk-form-grid" novalidate @submit.prevent="submit">
+    <div v-if="loading" class="dk-form-grid" aria-hidden="true">
+      <div class="dk-card">
+        <Skel w="12rem" h="1.05rem" class="mb-4" />
+        <div class="dk-field-row"><div v-for="n in 2" :key="n" class="dk-field"><Skel w="6rem" h="0.75rem" /><Skel w="100%" h="2.55rem" class="mt-2" /></div></div>
+        <div class="dk-field-row"><div v-for="n in 2" :key="n" class="dk-field"><Skel w="6rem" h="0.75rem" /><Skel w="100%" h="2.55rem" class="mt-2" /></div></div>
+        <div class="dk-field-row"><div v-for="n in 2" :key="n" class="dk-field"><Skel w="6rem" h="0.75rem" /><Skel w="100%" h="2.55rem" class="mt-2" /></div></div>
+        <div class="dk-field"><Skel w="4rem" h="0.75rem" /><Skel w="100%" h="5rem" class="mt-2" /></div>
+      </div>
+      <div class="dk-stack">
+        <div class="dk-card">
+          <Skel w="11rem" h="1.05rem" class="mb-4" />
+          <Skel w="6rem" h="0.75rem" /><Skel w="100%" h="2.55rem" r="0.7rem" class="mt-2 mb-4" />
+          <Skel w="6rem" h="0.75rem" /><Skel w="100%" h="2.55rem" r="0.7rem" class="mt-2" />
+        </div>
+        <div class="dk-card"><div class="flex items-center gap-3"><Skel circle w="2.5rem" h="2.5rem" /><div style="flex: 1"><Skel w="6rem" h="0.85rem" /><Skel w="9rem" h="0.7rem" class="mt-1.5" /></div></div></div>
+        <Skel w="100%" h="3rem" r="0.7rem" />
+      </div>
+    </div>
+
+    <form v-else class="dk-form-grid" novalidate @submit.prevent="submit">
       <!-- Left: main data -->
       <div class="dk-card">
         <h3 class="dk-card__title mb-4"><i class="pi pi-pencil dk-card__title-icon" /> Dati del movimento</h3>

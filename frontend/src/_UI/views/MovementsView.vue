@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { api } from '@/api'
 import { usePolling } from '@/composables/usePolling'
 import MovementCard from '@/_UI/components/MovementCard.vue'
+import MovementCardSkeleton from '@/_UI/components/MovementCardSkeleton.vue'
 
 const movements = ref([])
 const creatorOptions = ref([])
@@ -234,6 +235,17 @@ function formatDate(date) {
         </Transition>
       </template>
     </PCard>
+
+    <div v-if="loading && !movements.length" class="space-y-4" aria-hidden="true">
+      <section v-for="group in 2" :key="group">
+        <div class="movement-date-toggle" style="cursor: default">
+          <Skel w="8rem" h="0.9rem" />
+          <span class="movement-date-toggle__line" />
+          <Skel circle w="1.65rem" h="1.65rem" />
+        </div>
+        <div class="space-y-2"><MovementCardSkeleton v-for="n in 3" :key="n" /></div>
+      </section>
+    </div>
 
     <section v-for="(items, date) in grouped" :key="date">
       <button

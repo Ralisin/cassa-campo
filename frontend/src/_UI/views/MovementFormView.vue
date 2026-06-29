@@ -10,6 +10,7 @@ const route = useRoute()
 const router = useRouter()
 const session = useSessionStore()
 const editing = computed(() => typeof route.params.id === 'string')
+const loading = ref(typeof route.params.id === 'string')
 const saving = ref(false)
 const error = ref('')
 const offlineNotice = ref('')
@@ -107,14 +108,18 @@ onMounted(async () => {
     form.unit = session.activeCassa?.unit ?? ''
     return
   }
-  const movement = await api.get(`/movements/${route.params.id}`)
-  if (!session.isOperator && movement.created_by !== session.user?.id) {
-    router.replace(`/movimenti/${route.params.id}`)
-    return
+  try {
+    const movement = await api.get(`/movements/${route.params.id}`)
+    if (!session.isOperator && movement.created_by !== session.user?.id) {
+      router.replace(`/movimenti/${route.params.id}`)
+      return
+    }
+    Object.assign(form, movement, { amount: Number(movement.amount) })
+    // The unit always follows the active cassa.
+    form.unit = session.activeCassa?.unit ?? form.unit
+  } finally {
+    loading.value = false
   }
-  Object.assign(form, movement, { amount: Number(movement.amount) })
-  // The unit always follows the active cassa.
-  form.unit = session.activeCassa?.unit ?? form.unit
 })
 
 async function submit() {
@@ -171,7 +176,20 @@ function formatBytes(bytes) {
 
 <template>
   <main>
-    <PCard class="movement-form-card">
+    <PCard v-if="loading" class="movement-form-card" aria-hidden="true">
+      <template #content>
+        <div class="space-y-4">
+          <div class="grid grid-cols-2 gap-2.5">
+            <Skel w="100%" h="2.75rem" r="0.7rem" /><Skel w="100%" h="2.75rem" r="0.7rem" />
+          </div>
+          <div v-for="n in 4" :key="n"><Skel w="6rem" h="0.7rem" /><Skel w="100%" h="2.55rem" r="0.7rem" class="mt-2" /></div>
+          <Skel w="5rem" h="0.7rem" /><Skel w="100%" h="4.5rem" r="0.7rem" class="mt-2" />
+          <Skel w="100%" h="3rem" r="0.7rem" class="mt-2" />
+        </div>
+      </template>
+    </PCard>
+
+    <PCard v-else class="movement-form-card">
       <template #content>
         <form class="movement-form space-y-3" novalidate @submit.prevent="submit">
           <section class="space-y-2.5 rounded-xl bg-slate-50 p-2.5">

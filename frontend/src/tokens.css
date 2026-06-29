@@ -1,0 +1,161 @@
+/* ==========================================================================
+   Cassa Campo · Shared design tokens
+   Single source of truth for colour, elevation, radius and typography across
+   BOTH the mobile PWA shell and the desktop "gestionale" shell. Defined on
+   :root so they also apply to the screens that live OUTSIDE .dk-shell
+   (desktop login + cassa picker) — previously those used .dk-* variables that
+   resolved to nothing there, leaving cards transparent with the wrong border.
+   Brand palette: forest #12372a · moss #436850 · amber #d59d2b · cream #f4f1e8
+   ========================================================================== */
+
+:root {
+  /* Brand */
+  --brand-forest: #12372a;
+  --brand-forest-600: #1d4d39;
+  --brand-moss: #436850;
+  --brand-amber: #d59d2b;
+  --brand-cream: #f4f1e8;
+
+  /* Surfaces & neutrals (subtly warm to match the brand greens) */
+  --bg: #eef2ec;
+  --surface: #ffffff;
+  --surface-soft: #f6f8f5;
+  --surface-sunken: #eef2ee;
+
+  /* Text */
+  --text: #15281d;
+  --muted: #5b6b62;
+  --faint: #8a978f;
+
+  /* Borders */
+  --border: rgba(18, 55, 42, 0.10);
+  --border-strong: rgba(18, 55, 42, 0.18);
+
+  /* Semantic (income / expense / info / warning) */
+  --pos: #047857;  --pos-soft: #e7f6ee;
+  --neg: #dc2626;  --neg-soft: #fdeaea;
+  --info: #1d4ed8; --info-soft: #e8effc;
+  --warn: #b45309; --warn-soft: #fdf1dd;
+
+  /* Focus ring */
+  --ring: rgba(52, 125, 89, 0.40);
+
+  /* Radius scale */
+  --r-sm: 0.5rem;
+  --r-md: 0.75rem;
+  --r-lg: 1rem;
+  --r-xl: 1.25rem;
+  --r-2xl: 1.5rem;
+  --r-pill: 999px;
+
+  /* Elevation scale — cohesive, low-spread green-tinted shadows */
+  --shadow-xs: 0 1px 2px rgba(18, 55, 42, 0.06);
+  --shadow-sm: 0 2px 8px -4px rgba(18, 55, 42, 0.16);
+  --shadow-md: 0 12px 28px -18px rgba(18, 55, 42, 0.28);
+  --shadow-lg: 0 22px 48px -28px rgba(18, 55, 42, 0.42);
+
+  /* Typography */
+  --font-sans: 'Inter Variable', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* ----------------------------------------------------------------------
+     Back-compat aliases for the desktop shell's --dk-* names. Mapping them to
+     the shared tokens means desktop.css keeps working unchanged while every
+     screen — inside or outside .dk-shell — now resolves the same values.
+     -------------------------------------------------------------------- */
+  --dk-bg: var(--bg);
+  --dk-surface: var(--surface);
+  --dk-surface-soft: var(--surface-soft);
+  --dk-border: var(--border);
+  --dk-border-strong: var(--border-strong);
+  --dk-text: var(--text);
+  --dk-muted: var(--muted);
+  --dk-faint: var(--faint);
+  --dk-forest: var(--brand-forest);
+  --dk-moss: var(--brand-moss);
+  --dk-amber: var(--brand-amber);
+  --dk-cream: var(--brand-cream);
+  --dk-ring: var(--ring);
+  --dk-shadow: var(--shadow-lg);
+  --dk-shadow-sm: var(--shadow-sm);
+}
+
+/* Apply the brand typeface globally. PrimeVue components inherit via
+   `.p-component { font-family: inherit }` (set in style.css). */
+html {
+  font-family: var(--font-sans);
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
+/* --------------------------------------------------------------------------
+   Skeleton primitive. On-brand shimmer used to rebuild each screen's real
+   layout while it loads (not generic blocks). Drive it with the global <Skel>
+   component or the .skel class directly.
+   -------------------------------------------------------------------------- */
+.skel {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-sunken);
+  border-radius: var(--r-md);
+  flex: none;
+}
+.skel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    rgba(255, 255, 255, 0.65) 45%,
+    rgba(255, 255, 255, 0.65) 55%,
+    transparent 100%
+  );
+  animation: skel-shimmer 1.5s ease-in-out infinite;
+}
+.skel--circle { border-radius: var(--r-pill); }
+.skel--soft { background: rgba(18, 55, 42, 0.06); }
+/* On dark surfaces (sidebar, login aside) */
+.skel--dark { background: rgba(255, 255, 255, 0.10); }
+.skel--dark::after {
+  background: linear-gradient(90deg, transparent 0, rgba(255, 255, 255, 0.18) 50%, transparent 100%);
+}
+@keyframes skel-shimmer {
+  100% { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel::after { animation: none; }
+}
+
+/* Consistent keyboard focus across the whole app. Only :focus-visible, so
+   pointer users never see a ring — keyboard users always do. */
+:where(a, button, [role='button'], input, select, textarea, .dk-pick__card,
+  .dk-nav-item, .reimbursement-option):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* Picker cards: subtle lift on hover so they read as actionable. */
+.dk-pick__card {
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+.dk-pick__card:hover {
+  transform: translateY(-3px);
+  border-color: var(--ring);
+  box-shadow: var(--shadow-md);
+}
+
+/* Numbers (currency, amounts, KPI values) read as a true financial figure:
+   fixed-width digits so columns align and values don't jitter on update. */
+.tnum,
+.dk-amount,
+.dk-kpi__value,
+.dk-table__date,
+.summary-row__value,
+.movement-card-amount,
+.cash-summary-detail strong,
+.summary-settings-total strong {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1, 'cv05' 1;
+}

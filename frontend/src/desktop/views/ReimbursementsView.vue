@@ -73,9 +73,30 @@ usePolling(load)
 </script>
 
 <template>
-  <div v-if="summary">
+  <div>
     <PageHeader title="Rimborsi" subtitle="Spese anticipate da restituire" />
 
+    <template v-if="!summary">
+      <div class="dk-grid dk-grid--2" style="max-width: 40rem">
+        <article v-for="n in 2" :key="n" class="dk-kpi">
+          <Skel circle w="3rem" h="3rem" />
+          <div class="dk-kpi__body" style="flex: 1"><Skel w="55%" h="0.7rem" /><Skel w="65%" h="1.5rem" r="0.5rem" class="mt-2" /></div>
+        </article>
+      </div>
+      <div class="dk-card dk-section">
+        <div class="dk-toolbar"><Skel w="11rem" h="2.4rem" /><Skel w="11rem" h="2.4rem" /></div>
+        <div class="dk-skel-rows">
+          <div v-for="n in 5" :key="n" class="dk-skel-row">
+            <div style="flex: 1"><Skel w="35%" h="0.85rem" /><Skel w="22%" h="0.65rem" class="mt-1.5" /></div>
+            <Skel w="5rem" h="0.8rem" />
+            <Skel w="4.5rem" h="0.9rem" />
+            <Skel v-if="session.isOperator" w="9rem" h="2rem" r="0.5rem" />
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template v-else>
     <div class="dk-grid dk-grid--2" style="max-width: 40rem">
       <KpiCard v-for="kpi in kpis" :key="kpi.label" v-bind="kpi" />
     </div>
@@ -135,5 +156,6 @@ usePolling(load)
         </PColumn>
       </PDataTable>
     </div>
+    </template>
   </div>
 </template>

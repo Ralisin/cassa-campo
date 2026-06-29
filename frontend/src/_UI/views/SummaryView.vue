@@ -528,4 +528,21 @@ usePolling(loadSummary)
       </form>
     </PDialog>
   </main>
+
+  <main v-else class="summary-page" aria-hidden="true">
+    <section v-for="(rowsCount, s) in [3, 2, 1]" :key="s" class="summary-section">
+      <div class="summary-section-header"><Skel w="9rem" h="0.95rem" /></div>
+      <PCard class="summary-list-card">
+        <template #content>
+          <div class="summary-list">
+            <div v-for="n in rowsCount" :key="n" class="summary-row">
+              <Skel circle w="2.1rem" h="2.1rem" />
+              <Skel w="40%" h="0.85rem" />
+              <Skel w="4.5rem" h="0.9rem" style="justify-self: end" />
+            </div>
+          </div>
+        </template>
+      </PCard>
+    </section>
+  </main>
 </template>

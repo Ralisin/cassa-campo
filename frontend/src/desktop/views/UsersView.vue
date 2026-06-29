@@ -9,6 +9,7 @@ import { useSessionStore } from '@/stores/session'
 const session = useSessionStore()
 const router = useRouter()
 const users = ref([])
+const loading = ref(true)
 const dialogVisible = ref(false)
 const saving = ref(false)
 const submitted = ref(false)
@@ -67,7 +68,11 @@ function removeMembership(index) {
 }
 
 async function loadUsers() {
-  users.value = await api.get('/users')
+  try {
+    users.value = await api.get('/users')
+  } finally {
+    loading.value = false
+  }
 }
 
 function openCreate() {
@@ -141,7 +146,15 @@ onMounted(loadUsers)
     </PageHeader>
 
     <div class="dk-card">
-      <PDataTable :value="sortedUsers" data-key="id" row-hover class="dk-table" :pt="{ bodyRow: { class: 'dk-table__row' } }" @row-click="(e) => openEdit(e.data)">
+      <div v-if="loading && !users.length" class="dk-skel-rows">
+        <div v-for="n in 6" :key="n" class="dk-skel-row">
+          <Skel circle w="2.1rem" h="2.1rem" />
+          <div style="flex: 1"><Skel w="30%" h="0.85rem" /><Skel w="45%" h="0.65rem" class="mt-1.5" /></div>
+          <div class="flex gap-1.5"><Skel w="5rem" h="1.4rem" r="0.5rem" /><Skel w="5rem" h="1.4rem" r="0.5rem" /></div>
+          <Skel circle w="1.7rem" h="1.7rem" />
+        </div>
+      </div>
+      <PDataTable v-else :value="sortedUsers" data-key="id" row-hover class="dk-table" :pt="{ bodyRow: { class: 'dk-table__row' } }" @row-click="(e) => openEdit(e.data)">
         <template #empty><div class="dk-table__empty"><i class="pi pi-users" /><span>Nessun utente registrato</span></div></template>
         <PColumn header="Persona">
           <template #body="{ data }">

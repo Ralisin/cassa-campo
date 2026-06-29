@@ -6,6 +6,7 @@
 @layer base {
   body {
     @apply min-h-screen bg-[#f6f8f5] text-slate-800 antialiased;
+    font-family: var(--font-sans);
   }
 
   input:not(.p-inputtext),
@@ -569,20 +570,20 @@
   pointer-events: none;
   transform: translateX(var(--active-offset)) scaleX(1);
   transition:
-    transform 560ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 220ms ease;
+    transform 430ms cubic-bezier(0.34, 1.25, 0.45, 1),
+    opacity 200ms ease;
   will-change: transform;
 }
 
 .mobile-tabbar--moving-right .mobile-tabbar__trail {
-  opacity: 0.75;
-  transform: translateX(var(--active-offset)) translateX(-26%) scaleX(1.75);
+  opacity: 0.5;
+  transform: translateX(var(--active-offset)) translateX(-20%) scaleX(1.4);
   transform-origin: right;
 }
 
 .mobile-tabbar--moving-left .mobile-tabbar__trail {
-  opacity: 0.75;
-  transform: translateX(var(--active-offset)) translateX(26%) scaleX(1.75);
+  opacity: 0.5;
+  transform: translateX(var(--active-offset)) translateX(20%) scaleX(1.4);
   transform-origin: left;
 }
 
@@ -594,7 +595,7 @@
   height: 2.55rem;
   pointer-events: none;
   transform: translateX(var(--active-offset));
-  transition: transform 560ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: transform 430ms cubic-bezier(0.34, 1.25, 0.45, 1);
   will-change: transform;
 }
 
@@ -628,13 +629,13 @@
 }
 
 .mobile-tabbar--moving-right .mobile-tabbar__indicator-surface {
-  border-radius: 0.75rem 1.05rem 1.05rem 0.75rem;
-  transform: translateX(-50%) skewX(-7deg) scaleX(1.12);
+  border-radius: 0.8rem 1rem 1rem 0.8rem;
+  transform: translateX(-50%) skewX(-4deg) scaleX(1.06);
 }
 
 .mobile-tabbar--moving-left .mobile-tabbar__indicator-surface {
-  border-radius: 1.05rem 0.75rem 0.75rem 1.05rem;
-  transform: translateX(-50%) skewX(7deg) scaleX(1.12);
+  border-radius: 1rem 0.8rem 0.8rem 1rem;
+  transform: translateX(-50%) skewX(4deg) scaleX(1.06);
 }
 
 .mobile-tabbar--moving-right .mobile-tabbar__indicator-glow,
@@ -755,44 +756,44 @@
   overflow-x: clip;
 }
 
+/* Clean directional slide (no blur / no 3D rotate). Fast eased exit, then a
+   smooth spring-like entrance so the new screen "settles" in from the side. */
 .menu-page-forward-enter-active,
-.menu-page-forward-leave-active,
 .menu-page-backward-enter-active,
+.menu-page-fade-enter-active {
+  transition: opacity 0.24s ease, transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.menu-page-forward-leave-active,
 .menu-page-backward-leave-active,
-.menu-page-fade-enter-active,
 .menu-page-fade-leave-active {
-  transform-origin: center 20%;
-  transition: opacity 90ms ease, transform 140ms cubic-bezier(0.22, 1, 0.36, 1), filter 100ms ease;
+  transition: opacity 0.13s ease, transform 0.18s cubic-bezier(0.4, 0, 1, 1);
 }
 
 .menu-page-forward-enter-from {
   opacity: 0;
-  filter: blur(2px);
-  transform: perspective(900px) translateX(0.75rem) rotateY(-1deg) scale(0.99);
+  transform: translateX(1.5rem);
 }
-
 .menu-page-forward-leave-to {
   opacity: 0;
-  filter: blur(1px);
-  transform: perspective(900px) translateX(-0.35rem) rotateY(0.5deg) scale(0.995);
+  transform: translateX(-0.85rem);
 }
 
 .menu-page-backward-enter-from {
   opacity: 0;
-  filter: blur(2px);
-  transform: perspective(900px) translateX(-0.75rem) rotateY(1deg) scale(0.99);
+  transform: translateX(-1.5rem);
 }
-
 .menu-page-backward-leave-to {
   opacity: 0;
-  filter: blur(1px);
-  transform: perspective(900px) translateX(0.35rem) rotateY(-0.5deg) scale(0.995);
+  transform: translateX(0.85rem);
 }
 
-.menu-page-fade-enter-from,
+.menu-page-fade-enter-from {
+  opacity: 0;
+  transform: translateY(0.6rem);
+}
 .menu-page-fade-leave-to {
   opacity: 0;
-  transform: translateY(0.35rem);
+  transform: translateY(-0.35rem);
 }
 
 @media (prefers-reduced-motion: reduce) {

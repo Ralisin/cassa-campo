@@ -217,8 +217,69 @@ usePolling(loadMovements, 12000)
       </div>
     </template>
 
-    <div v-else class="dk-grid dk-grid--kpi">
-      <PSkeleton v-for="n in 4" :key="n" height="6rem" class="dk-skeleton" />
-    </div>
+    <template v-else>
+      <div class="dk-grid dk-grid--kpi">
+        <article v-for="n in 4" :key="n" class="dk-kpi">
+          <Skel circle w="3rem" h="3rem" />
+          <div class="dk-kpi__body" style="flex: 1">
+            <Skel w="55%" h="0.7rem" />
+            <Skel w="70%" h="1.5rem" r="0.5rem" class="mt-2" />
+          </div>
+        </article>
+      </div>
+
+      <div class="dk-grid dk-grid--dash dk-section">
+        <div class="dk-stack">
+          <section class="dk-card">
+            <header class="dk-card__head">
+              <div><Skel w="9rem" h="1rem" /><Skel w="12rem" h="0.7rem" class="mt-2" /></div>
+            </header>
+            <div class="dk-skel-bars">
+              <Skel v-for="n in 12" :key="n" w="100%" :h="`${30 + ((n * 37) % 70)}%`" r="6px 6px 0 0" />
+            </div>
+          </section>
+
+          <section class="dk-card">
+            <header class="dk-card__head">
+              <div><Skel w="11rem" h="1rem" /><Skel w="9rem" h="0.7rem" class="mt-2" /></div>
+              <Skel w="5rem" h="1.4rem" r="0.5rem" />
+            </header>
+            <div class="dk-skel-rows">
+              <div v-for="n in 6" :key="n" class="dk-skel-row">
+                <Skel circle w="2.1rem" h="2.1rem" />
+                <div style="flex: 1"><Skel w="40%" h="0.8rem" /><Skel w="25%" h="0.65rem" class="mt-1.5" /></div>
+                <Skel w="4.5rem" h="0.9rem" />
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="dk-stack">
+          <section class="dk-card">
+            <header class="dk-card__head">
+              <div><Skel w="10rem" h="1rem" /><Skel w="8rem" h="0.7rem" class="mt-2" /></div>
+            </header>
+            <div class="dk-skel-doughnut">
+              <Skel circle w="11rem" h="11rem" />
+              <div class="dk-skel-legend"><Skel v-for="n in 4" :key="n" w="4.5rem" h="0.7rem" /></div>
+            </div>
+          </section>
+
+          <section class="dk-card">
+            <header class="dk-card__head">
+              <div><Skel w="11rem" h="1rem" /><Skel w="8rem" h="0.7rem" class="mt-2" /></div>
+            </header>
+            <div class="space-y-4">
+              <div v-for="n in 4" :key="n">
+                <div class="mb-1.5 flex items-center justify-between">
+                  <Skel w="5rem" h="0.8rem" /><Skel w="7rem" h="0.8rem" />
+                </div>
+                <Skel w="100%" h="0.55rem" r="999px" />
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </template>
   </div>
 </template>

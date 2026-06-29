@@ -98,7 +98,7 @@ watch(
     navMotion.value = nextIndex > previousIndex ? 'right' : nextIndex < previousIndex ? 'left' : 'idle'
     window.clearTimeout(navMotionTimer)
     nextTick(() => {
-      navMotionTimer = window.setTimeout(() => (navMotion.value = 'idle'), 560)
+      navMotionTimer = window.setTimeout(() => (navMotion.value = 'idle'), 450)
     })
   },
   { flush: 'sync' },

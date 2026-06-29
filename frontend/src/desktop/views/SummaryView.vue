@@ -169,7 +169,7 @@ usePolling(loadSummary)
 </script>
 
 <template>
-  <div v-if="dashboard">
+  <div>
     <PageHeader title="Riepilogo campo" subtitle="Bilancio, preventivi e giroconti">
       <template #actions>
         <PButton v-if="session.isOperator" label="Impostazioni" icon="pi pi-sliders-h" outlined @click="router.push('/impostazioni')" />
@@ -177,6 +177,49 @@ usePolling(loadSummary)
       </template>
     </PageHeader>
 
+    <template v-if="!dashboard">
+      <div class="dk-grid dk-grid--kpi">
+        <article v-for="n in 4" :key="n" class="dk-kpi">
+          <Skel circle w="3rem" h="3rem" />
+          <div class="dk-kpi__body" style="flex: 1"><Skel w="55%" h="0.7rem" /><Skel w="70%" h="1.5rem" r="0.5rem" class="mt-2" /></div>
+        </article>
+      </div>
+      <div class="dk-grid dk-grid--dash dk-section">
+        <section class="dk-card">
+          <header class="dk-card__head"><div><Skel w="11rem" h="1rem" /><Skel w="9rem" h="0.7rem" class="mt-2" /></div></header>
+          <div class="dk-skel-bars">
+            <Skel v-for="n in 8" :key="n" w="100%" :h="`${35 + ((n * 41) % 60)}%`" r="6px 6px 0 0" />
+          </div>
+        </section>
+        <div class="dk-stack">
+          <section class="dk-card">
+            <Skel w="11rem" h="1rem" class="mb-4" />
+            <div class="space-y-4">
+              <div v-for="n in 4" :key="n">
+                <div class="mb-1.5 flex items-center justify-between"><Skel w="5rem" h="0.8rem" /><Skel w="7rem" h="0.8rem" /></div>
+                <Skel w="100%" h="0.55rem" r="999px" />
+              </div>
+            </div>
+          </section>
+          <div class="dk-grid dk-grid--2">
+            <article v-for="n in 2" :key="n" class="dk-kpi">
+              <Skel circle w="3rem" h="3rem" />
+              <div class="dk-kpi__body" style="flex: 1"><Skel w="55%" h="0.7rem" /><Skel w="65%" h="1.4rem" r="0.5rem" class="mt-2" /></div>
+            </article>
+          </div>
+        </div>
+      </div>
+      <section class="dk-card dk-section">
+        <header class="dk-card__head"><div><Skel w="8rem" h="1rem" /><Skel w="13rem" h="0.7rem" class="mt-2" /></div></header>
+        <div class="dk-skel-rows">
+          <div v-for="n in 4" :key="n" class="dk-skel-row">
+            <Skel w="3.4rem" h="0.8rem" /><Skel w="6rem" h="0.8rem" /><div style="flex: 1"><Skel w="40%" h="0.8rem" /></div><Skel w="4.5rem" h="0.9rem" />
+          </div>
+        </div>
+      </section>
+    </template>
+
+    <template v-else>
     <div class="dk-grid dk-grid--kpi">
       <KpiCard v-for="kpi in overviewKpis" :key="kpi.label" v-bind="kpi" />
     </div>
@@ -245,6 +288,7 @@ usePolling(loadSummary)
         </PColumn>
       </PDataTable>
     </section>
+    </template>
 
     <PDialog v-model:visible="transferDialog" modal :header="editingTransferId ? 'Modifica giroconto' : 'Nuovo giroconto'" class="summary-dialog w-[28rem]">
       <form class="summary-dialog__form" @submit.prevent="saveTransfer">

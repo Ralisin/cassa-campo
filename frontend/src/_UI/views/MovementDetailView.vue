@@ -114,4 +114,27 @@ function formatBytes(bytes) {
       </template>
     </PCard>
   </main>
+
+  <main v-else aria-hidden="true">
+    <PCard>
+      <template #content>
+        <section class="grid place-items-center border-b border-slate-200 px-5 pb-8 pt-4">
+          <Skel circle w="3.5rem" h="3.5rem" />
+          <Skel w="55%" h="1.2rem" class="mt-4" />
+          <Skel w="5rem" h="1.4rem" r="0.5rem" class="mt-2" />
+          <Skel w="9rem" h="1.8rem" r="0.5rem" class="mt-4" />
+        </section>
+        <section class="divide-y divide-slate-100">
+          <div v-for="n in 7" :key="n" class="flex items-center gap-3 py-4">
+            <Skel circle w="1.1rem" h="1.1rem" />
+            <Skel w="7rem" h="0.8rem" style="flex: 1" />
+            <Skel w="5rem" h="0.8rem" />
+          </div>
+        </section>
+        <section class="border-t border-slate-200 pt-4">
+          <div class="flex items-center gap-3"><Skel circle w="2.5rem" h="2.5rem" /><div style="flex: 1"><Skel w="5rem" h="0.85rem" /><Skel w="7rem" h="0.7rem" class="mt-1.5" /></div></div>
+        </section>
+      </template>
+    </PCard>
+  </main>
 </template>

@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { api } from '@/api'
 import { usePolling } from '@/composables/usePolling'
 import MovementCard from '@/_UI/components/MovementCard.vue'
+import MovementCardSkeleton from '@/_UI/components/MovementCardSkeleton.vue'
 
 const dashboard = ref(null)
 const router = useRouter()
@@ -48,5 +49,24 @@ usePolling(loadDashboard)
       </PCard>
     </section>
   </main>
-  <div v-else class="space-y-3"><PCard v-for="n in 5" :key="n"><template #content><PSkeleton height="3rem" /></template></PCard></div>
+  <main v-else class="space-y-6">
+    <section>
+      <Skel w="7rem" h="0.95rem" class="mb-2.5" />
+      <div class="grid grid-cols-2 gap-3">
+        <PCard v-for="n in 2" :key="n" class="home-balance-card">
+          <template #content>
+            <div class="flex flex-col gap-3">
+              <Skel w="2.75rem" h="2.75rem" r="0.75rem" />
+              <div><Skel w="70%" h="0.7rem" /><Skel w="55%" h="1.1rem" r="0.5rem" class="mt-2" /></div>
+            </div>
+          </template>
+        </PCard>
+      </div>
+      <Skel w="100%" h="3.5rem" r="0.75rem" class="!mt-4" />
+    </section>
+    <section>
+      <Skel w="9rem" h="0.95rem" class="mb-2.5" />
+      <div class="space-y-2"><MovementCardSkeleton v-for="n in 3" :key="n" /></div>
+    </section>
+  </main>
 </template>

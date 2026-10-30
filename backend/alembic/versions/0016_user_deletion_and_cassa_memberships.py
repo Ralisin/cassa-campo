@@ -5,7 +5,7 @@ from typing import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0016_user_deletion_and_cassa_memberships"
+revision: str = "0016_user_access_and_deletion"
 down_revision: str | None = "0015_audit_reset_soft_delete"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

@@ -12,7 +12,6 @@ from sqlalchemy.orm import joinedload, selectinload
 from app.audit_service import write_audit
 from app.dependencies import (
     CurrentCassa,
-    CurrentMembership,
     DbSession,
     WritableMembership,
     can_edit_movement,
@@ -185,7 +184,7 @@ def get_movement(movement_id: uuid.UUID, db: DbSession, cassa: CurrentCassa) -> 
 def create_movement(data: MovementInput, db: DbSession, membership: WritableMembership) -> MovementRead:
     cassa = membership.cassa
     movement = Movement(created_by=membership.user_id)
-    apply_movement_input(movement, data, cassa)
+    apply_movement_input(movement, data, cassa, membership.role)
     db.add(movement)
     db.flush()
     notify_admins_of_movement(
@@ -218,7 +217,7 @@ def update_movement(
     if not can_edit_movement(membership, movement.created_by):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     reimbursement_requested = movement.reimbursement is None and data.needs_reimbursement
-    apply_movement_input(movement, data, cassa)
+    apply_movement_input(movement, data, cassa, membership.role)
     if reimbursement_requested:
         notify_admins_of_movement(db, movement, membership.user, reimbursement_requested=True)
     write_audit(

@@ -63,10 +63,23 @@ def test_cassa_without_membership_is_forbidden(client, scenario, auth):
 
 # --- Movement scoping ------------------------------------------------------
 
-def test_movement_unit_forced_to_cassa(client, scenario, auth):
+def test_camp_movement_unit_forced_to_cassa(client, scenario, auth):
     headers = auth("massimo@roma108.it", scenario["eg"])
     # client tries to sneak a different unit; server must force E/G
     res = client.post("/movements", json=expense(unit="R/S"), headers=headers)
+    assert res.status_code == 201
+    assert res.json()["unit"] == "E/G"
+
+
+def test_annual_operator_can_choose_movement_unit(client, scenario, auth):
+    admin = auth("massimo@roma108.it", scenario["eg"])
+    annual = client.post("/casse", json={"unit": "E/G", "kind": "anno", "year": 2027}, headers=admin).json()
+    cashier = auth("luca@roma108.it", annual["id"])
+    res = client.post("/movements", json=expense(unit="R/S"), headers=cashier)
+    assert res.status_code == 201
+    assert res.json()["unit"] == "R/S"
+    user = auth("carlo@roma108.it", annual["id"])
+    res = client.post("/movements", json=expense(unit="R/S"), headers=user)
     assert res.status_code == 201
     assert res.json()["unit"] == "E/G"
 
@@ -279,7 +292,7 @@ def test_cashier_can_manage_casse(client, scenario, auth):
     assert client.put(f"/casse/{created.json()['id']}/close", headers=headers).status_code == 200
 
 
-def test_editing_user_keeps_both_casse_of_same_unit(client, scenario, auth):
+def test_editing_unit_role_updates_both_casse(client, scenario, auth):
     headers = auth("massimo@roma108.it", scenario["eg"])
     annual = client.post("/casse", json={"unit": "E/G", "kind": "anno", "year": 2027}, headers=headers).json()
     updated = client.put(
@@ -287,10 +300,7 @@ def test_editing_user_keeps_both_casse_of_same_unit(client, scenario, auth):
         json={
             "email": "luca@roma108.it",
             "name": "Luca",
-            "memberships": [
-                {"cassa_id": str(scenario["eg"].id), "role": "cashier"},
-                {"cassa_id": annual["id"], "role": "cashier"},
-            ],
+            "memberships": [{"unit": "E/G", "role": "admin"}],
         },
         headers=headers,
     )
@@ -298,6 +308,7 @@ def test_editing_user_keeps_both_casse_of_same_unit(client, scenario, auth):
     assert {m["cassa_id"] for m in updated.json()["memberships"]} == {
         str(scenario["eg"].id), annual["id"]
     }
+    assert {m["role"] for m in updated.json()["memberships"]} == {"admin"}
 
 
 def test_deleting_user_revokes_access_and_preserves_movements(client, scenario, auth):
@@ -312,7 +323,7 @@ def test_deleting_user_revokes_access_and_preserves_movements(client, scenario, 
     assert client.get("/auth/me", headers=user_headers).status_code == 401
     assert client.post("/auth/login", json={"email": "carlo@roma108.it", "password": "password123"}).status_code == 401
     movements = client.get("/movements", headers=admin_headers).json()["items"]
-    assert any(m["supplier"] == "Storico" and m["creator_name"] == "Utente eliminato" for m in movements)
+    assert any(m["supplier"] == "Storico" and m["creator_name"] == "Carlo" for m in movements)
 
     recreated = client.post("/users", json={
         "email": "carlo@roma108.it",
@@ -349,6 +360,7 @@ def test_closed_cassa_is_read_only_and_next_year_can_be_opened(client, scenario,
     assert scenario["eg"].status == CassaStatus.CLOSED
 
     assert client.get("/movements", headers=headers).json()["total"] == 1
+    assert client.get("/exports/excel", headers=headers).status_code == 200
     assert client.post("/movements", json=expense(supplier="Bloccato"), headers=headers).status_code == 403
     assert client.put("/settings", json={
         "camp_year": 2027,

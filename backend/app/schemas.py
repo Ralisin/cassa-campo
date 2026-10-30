@@ -124,8 +124,7 @@ class MovementInput(BaseModel):
     type: MovementType
     payment_method: PaymentMethod
     supplier: str = Field(min_length=1, max_length=255)
-    # The unit is always forced server-side to the active cassa's unit; any value
-    # sent by the client is ignored.
+    # Annual cash boxes can record expenses for any unit; camp boxes stay scoped.
     unit: Branch | None = None
     balance_type: BalanceType = BalanceType.CAMP
     category: ExpenseCategorySlug | None = None

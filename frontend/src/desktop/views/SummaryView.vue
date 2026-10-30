@@ -170,7 +170,7 @@ usePolling(loadSummary)
   <div>
     <PageHeader title="Riepilogo campo" subtitle="Bilancio, preventivi e giroconti">
       <template #actions>
-        <PButton v-if="session.isOperator" label="Esporta Excel" icon="pi pi-file-excel" class="dk-topbar__cta" :loading="exportingReport" @click="exportReport" />
+        <PButton v-if="session.canExport" label="Esporta Excel" icon="pi pi-file-excel" class="dk-topbar__cta" :loading="exportingReport" @click="exportReport" />
       </template>
     </PageHeader>
 

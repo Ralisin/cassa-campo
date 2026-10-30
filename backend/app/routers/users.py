@@ -66,6 +66,7 @@ def sync_memberships(
     db: DbSession, user: User, group: Group, memberships: list[MembershipInput]
 ) -> None:
     desired = {}
+    units = set()
     for item in memberships:
         if item.cassa_id is not None:
             cassa = db.scalar(
@@ -77,9 +78,11 @@ def sync_memberships(
             cassa = ensure_cassa(db, group.id, item.unit.value, item.kind)
         else:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cassa obbligatoria")
-        if cassa.id in desired:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cassa ripetuta")
-        desired[cassa.id] = (cassa, item.role)
+        if cassa.unit in units:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unità ripetuta")
+        units.add(cassa.unit)
+        for unit_cassa in db.scalars(select(Cassa).where(Cassa.group_id == group.id, Cassa.unit == cassa.unit)):
+            desired[unit_cassa.id] = (unit_cassa, item.role)
 
     existing = {membership.cassa_id: membership for membership in user.memberships}
     for cassa_id, membership in existing.items():
@@ -178,7 +181,7 @@ def delete_user(
     user.memberships.clear()
     user.deleted_at = datetime.now(UTC)
     user.email = f"deleted-{user.id}@deleted.invalid"
-    user.name = "Utente eliminato"
+    # Keep the creator's name attached to historical movements and reimbursements.
     write_audit(
         db,
         action="user_deleted",

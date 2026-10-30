@@ -20,6 +20,7 @@ from app.models import (
     TransferType,
     TreasuryTransfer,
     User,
+    UserRole,
 )
 from app.schemas import (
     CategorySummary,
@@ -118,11 +119,16 @@ def movement_to_read(movement: Movement) -> MovementRead:
     )
 
 
-def apply_movement_input(movement: Movement, data: MovementInput, cassa: Cassa) -> None:
+def apply_movement_input(
+    movement: Movement, data: MovementInput, cassa: Cassa, role: UserRole
+) -> None:
     for field, value in data.model_dump(exclude={"needs_reimbursement", "unit"}).items():
         setattr(movement, field, value)
     movement.cassa_id = cassa.id
-    movement.unit = cassa.unit
+    if cassa.kind.value == "anno" and role in (UserRole.ADMIN, UserRole.CASHIER) and data.unit:
+        movement.unit = data.unit.value
+    elif movement.id is None:
+        movement.unit = cassa.unit
     if data.needs_reimbursement and movement.reimbursement is None:
         movement.reimbursement = MovementReimbursement()
     elif not data.needs_reimbursement and movement.reimbursement is not None:

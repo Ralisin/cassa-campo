@@ -4,7 +4,6 @@ import { useRouter } from 'vue-router'
 import { useConfirm } from 'primevue/useconfirm'
 
 import { api } from '@/api'
-import { formatCassaYear } from '@/cassaYear'
 import PageHeader from '@/desktop/components/PageHeader.vue'
 import { useSessionStore } from '@/stores/session'
 
@@ -20,6 +19,7 @@ const deletingId = ref(null)
 const submitted = ref(false)
 const error = ref('')
 const editingId = ref(null)
+const branches = ['L/C', 'E/G', 'R/S', 'CoCa', 'Gruppo']
 const roles = [
   { label: 'Utente', value: 'user' },
   { label: 'Cassiere', value: 'cashier' },
@@ -43,7 +43,7 @@ const passwordInvalid = computed(
 const membershipsInvalid = computed(() => {
   if (!submitted.value) return false
   if (!form.memberships.length) return true
-  const ids = form.memberships.map((item) => item.cassa_id)
+  const ids = form.memberships.map((item) => item.unit)
   return ids.some((id) => !id) || new Set(ids).size !== ids.length
 })
 
@@ -56,20 +56,18 @@ const sortedUsers = computed(() =>
   }),
 )
 
-const cassaOptions = computed(() => casse.value.map((cassa) => ({
-  id: cassa.id,
-  label: `${cassa.unit} · ${cassa.kind === 'anno' ? 'Anno' : 'Campo'} ${formatCassaYear(cassa.kind, cassa.year)}${cassa.is_closed ? ' · chiusa' : ''}`,
-})))
+const unitOptions = computed(() => [...new Set(casse.value.map((cassa) => cassa.unit))].sort((a, b) => branches.indexOf(a) - branches.indexOf(b)).map((unit) => ({ unit, label: unit })))
 
-function availableCasse(index) {
-  return cassaOptions.value.filter((cassa) => cassa.id === form.memberships[index].cassa_id
-    || !form.memberships.some((item, position) => position !== index && item.cassa_id === cassa.id))
+function availableUnits(index) {
+  return unitOptions.value.filter((option) => option.unit === form.memberships[index].unit
+    || !form.memberships.some((item, position) => position !== index && item.unit === option.unit))
 }
 
 function addMembership() {
-  const next = cassaOptions.value.find((cassa) => !form.memberships.some((item) => item.cassa_id === cassa.id))
-  if (next) form.memberships.push({ cassa_id: next.id, role: 'user' })
+  const next = unitOptions.value.find((option) => !form.memberships.some((item) => item.unit === option.unit))
+  if (next) form.memberships.push({ unit: next.unit, role: 'user' })
 }
+
 function removeMembership(index) {
   form.memberships.splice(index, 1)
 }
@@ -97,8 +95,8 @@ function openEdit(user) {
     email: user.email,
     password: '',
     memberships: user.memberships.length
-      ? user.memberships.map((item) => ({ cassa_id: item.cassa_id, role: item.role }))
-      : [{ cassa_id: cassaOptions.value[0]?.id ?? null, role: 'user' }],
+      ? [...new Map(user.memberships.map((item) => [item.unit, { unit: item.unit, role: item.role }])).values()]
+      : [{ unit: unitOptions.value[0]?.unit ?? null, role: 'user' }],
   })
   submitted.value = false
   error.value = ''
@@ -114,7 +112,7 @@ async function save() {
     const payload = {
       name: form.name,
       email: form.email,
-      memberships: form.memberships.map((item) => ({ cassa_id: item.cassa_id, role: item.role })),
+      memberships: form.memberships.map((item) => ({ unit: item.unit, role: item.role })),
     }
     if (!editing.value || form.password) payload.password = form.password
     if (editing.value) await api.put(`/users/${editingId.value}`, payload)
@@ -213,13 +211,13 @@ onMounted(async () => {
             </div>
           </template>
         </PColumn>
-        <PColumn header="Casse e ruoli">
+        <PColumn header="Unità e ruoli">
           <template #body="{ data }">
             <div class="flex flex-wrap gap-1.5">
               <PTag
-                v-for="membership in data.memberships"
-                :key="membership.cassa_id"
-                :value="`${membership.unit} · ${membership.kind === 'anno' ? 'Anno' : 'Campo'} ${formatCassaYear(membership.kind, membership.year)} · ${roleLabel(membership.role)}`"
+                v-for="membership in [...new Map(data.memberships.map((item) => [item.unit, item])).values()]"
+                :key="membership.unit"
+                :value="`${membership.unit} · ${roleLabel(membership.role)}`"
                 :severity="ROLE_SEVERITY[membership.role]"
               />
               <PTag v-if="!data.memberships.length" value="Nessuna cassa" severity="danger" />
@@ -241,7 +239,7 @@ onMounted(async () => {
       <form class="summary-dialog__form" novalidate @submit.prevent="save">
         <p class="summary-dialog__intro">
           <i :class="editing ? 'pi pi-user-edit' : 'pi pi-user-plus'" />
-          {{ editing ? 'Aggiorna i dati e le casse della persona.' : 'Crea un accesso e assegna una o più casse.' }}
+          {{ editing ? 'Aggiorna i dati e i ruoli per unità.' : 'Crea un accesso e assegna una o più unità.' }}
         </p>
         <div class="summary-dialog__field">
           <label for="user-name">Nome <span class="required-mark">*</span></label>
@@ -256,17 +254,17 @@ onMounted(async () => {
         </div>
         <div class="summary-dialog__field">
           <div class="mb-1 flex items-center justify-between">
-            <label>Casse e ruoli <span class="required-mark">*</span></label>
-            <PButton type="button" label="Aggiungi" icon="pi pi-plus" text size="small" :disabled="form.memberships.length >= casse.length" @click="addMembership" />
+            <label>Unità e ruoli <span class="required-mark">*</span></label>
+            <PButton type="button" label="Aggiungi" icon="pi pi-plus" text size="small" :disabled="form.memberships.length >= unitOptions.length" @click="addMembership" />
           </div>
           <div class="space-y-2">
             <div v-for="(membership, index) in form.memberships" :key="index" class="membership-row">
-              <PSelect v-model="membership.cassa_id" :options="availableCasse(index)" option-label="label" option-value="id" class="membership-row__cassa" />
+              <PSelect v-model="membership.unit" :options="availableUnits(index)" option-label="label" option-value="unit" class="membership-row__cassa" />
               <PSelect v-model="membership.role" :options="roles" option-label="label" option-value="value" class="membership-row__role" />
-              <PButton type="button" icon="pi pi-times" text rounded severity="secondary" aria-label="Rimuovi cassa" :disabled="form.memberships.length === 1" class="!h-9 !w-9" @click="removeMembership(index)" />
+              <PButton type="button" icon="pi pi-times" text rounded severity="secondary" aria-label="Rimuovi unità" :disabled="form.memberships.length === 1" class="!h-9 !w-9" @click="removeMembership(index)" />
             </div>
           </div>
-          <small v-if="membershipsInvalid" class="field-error">Assegna almeno una cassa senza duplicati.</small>
+          <small v-if="membershipsInvalid" class="field-error">Assegna almeno una unità senza duplicati.</small>
         </div>
         <div class="summary-dialog__field">
           <label for="user-password">Password <span v-if="!editing" class="required-mark">*</span></label>

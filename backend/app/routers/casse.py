@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.audit_service import write_audit
 from app.dependencies import CurrentUser, DbSession, OperatorMembership, WritableOperatorMembership
-from app.models import Cassa, CassaStatus, Membership, UserRole
+from app.models import Cassa, CassaStatus, Membership, User, UserRole
 from app.schemas import CassaCreate, CassaRead
 from app.services import cassa_to_read
 
@@ -42,20 +42,17 @@ def create_cassa(
             status_code=status.HTTP_409_CONFLICT,
             detail="Esiste già una cassa aperta di questo tipo per questa unità",
         )
-    source = db.scalar(
-        select(Cassa)
-        .join(Membership, Membership.cassa_id == Cassa.id)
-        .where(Cassa.group_id == group_id, Cassa.unit == data.unit.value)
-        .order_by((Cassa.kind == data.kind).desc(), (Cassa.status == CassaStatus.OPEN).desc(), Cassa.year.desc())
-        .limit(1)
-    )
     inherited = {}
-    if source:
-        inherited = {
-            membership.user_id: membership.role
-            for membership in db.scalars(select(Membership).where(Membership.cassa_id == source.id))
-        }
-    if not user.is_system_admin:
+    role_rank = {UserRole.USER: 0, UserRole.CASHIER: 1, UserRole.ADMIN: 2}
+    for membership in db.scalars(
+        select(Membership)
+        .join(Cassa, Membership.cassa_id == Cassa.id)
+        .join(User, Membership.user_id == User.id)
+        .where(Cassa.group_id == group_id, Cassa.unit == data.unit.value, User.deleted_at.is_(None))
+    ):
+        if role_rank[membership.role] > role_rank.get(inherited.get(membership.user_id), -1):
+            inherited[membership.user_id] = membership.role
+    if not user.is_system_admin and role_rank[operator.role] > role_rank.get(inherited.get(user.id), -1):
         inherited[user.id] = operator.role
 
     cassa = Cassa(

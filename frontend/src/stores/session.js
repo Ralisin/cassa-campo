@@ -30,6 +30,7 @@ export const useSessionStore = defineStore('session', () => {
   const isAdmin = computed(() => isSystemAdmin.value || role.value === 'admin')
   const cassaClosed = computed(() => Boolean(activeCassa.value?.is_closed || activeCassa.value?.status === 'chiusa'))
   const isOperator = computed(() => (isSystemAdmin.value || ['admin', 'cashier'].includes(role.value)) && !cassaClosed.value)
+  const canExport = computed(() => isSystemAdmin.value || ['admin', 'cashier'].includes(role.value))
   const canManageCasse = computed(
     () => isSystemAdmin.value || ['admin', 'cashier'].includes(role.value) || memberships.value.some((item) => ['admin', 'cashier'].includes(item.role)),
   )
@@ -121,6 +122,7 @@ export const useSessionStore = defineStore('session', () => {
     role,
     isAdmin,
     isOperator,
+    canExport,
     cassaClosed,
     canManageCasse,
     cassaManagementContextId,

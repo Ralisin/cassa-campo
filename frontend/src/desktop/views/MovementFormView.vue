@@ -23,6 +23,8 @@ const balanceTypes = [
   { label: 'Ordinario', value: 'O' },
   { label: 'Autofinanziamento', value: 'A' },
 ]
+const unitOptions = ['L/C', 'E/G', 'R/S', 'CoCa', 'Gruppo']
+const canChooseUnit = computed(() => session.isOperator && session.activeCassa?.kind === 'anno')
 const categories = [
   { label: 'Vitto', value: 'vitto' },
   { label: 'Alloggio', value: 'alloggio' },
@@ -112,7 +114,6 @@ onMounted(async () => {
       return
     }
     Object.assign(form, movement, { amount: Number(movement.amount) })
-    form.unit = session.activeCassa?.unit ?? form.unit
   } finally {
     loading.value = false
   }
@@ -214,8 +215,9 @@ function formatBytes(bytes) {
         <div class="dk-field-row">
           <div class="dk-field">
             <label for="unit">Unità</label>
-            <PInputText id="unit" v-model="form.unit" disabled fluid />
-            <small class="dk-field__hint">Definita dalla cassa attiva.</small>
+            <PSelect v-if="canChooseUnit" id="unit" v-model="form.unit" :options="unitOptions" fluid />
+            <PInputText v-else id="unit" v-model="form.unit" disabled fluid />
+            <small v-if="!canChooseUnit" class="dk-field__hint">Definita dalla cassa attiva.</small>
           </div>
           <div class="dk-field">
             <label for="balance-type">Bilancio</label>

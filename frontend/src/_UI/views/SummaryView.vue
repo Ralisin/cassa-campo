@@ -392,7 +392,7 @@ usePolling(loadSummary)
       </PCard>
     </section>
 
-    <section v-if="session.isOperator" class="summary-section">
+    <section v-if="session.canExport" class="summary-section">
       <div class="summary-section-header">
         <h2 class="section-title">Esportazione</h2>
       </div>

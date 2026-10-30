@@ -58,7 +58,7 @@ def change_password(data: PasswordChange, db: DbSession, user: CurrentUser) -> R
 @router.post("/password-reset/request", status_code=status.HTTP_204_NO_CONTENT)
 def request_password_reset(data: PasswordResetRequest, db: DbSession) -> Response:
     user = db.scalar(select(User).where(User.email == data.email))
-    if user:
+    if user and user.deleted_at is None:
         token = create_password_reset_token(db, user)
         write_audit(
             db,

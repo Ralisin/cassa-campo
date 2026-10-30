@@ -1,6 +1,7 @@
 import uuid
+from datetime import UTC, datetime
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
@@ -26,7 +27,7 @@ def get_user_in_group_or_404(db: DbSession, user_id: uuid.UUID, group_id: uuid.U
     user = db.scalar(
         select(User)
         .options(selectinload(User.memberships).joinedload(Membership.cassa).joinedload(Cassa.group))
-        .where(User.id == user_id, User.group_id == group_id)
+        .where(User.id == user_id, User.group_id == group_id, User.deleted_at.is_(None))
     )
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
@@ -64,17 +65,30 @@ def validate_email_domain(email: str, group: Group) -> str:
 def sync_memberships(
     db: DbSession, user: User, group: Group, memberships: list[MembershipInput]
 ) -> None:
-    desired = {(item.unit.value, item.kind): item.role for item in memberships}
-    existing = {(membership.cassa.unit, membership.cassa.kind): membership for membership in user.memberships}
+    desired = {}
+    for item in memberships:
+        if item.cassa_id is not None:
+            cassa = db.scalar(
+                select(Cassa).where(Cassa.id == item.cassa_id, Cassa.group_id == group.id)
+            )
+            if cassa is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cassa non valida")
+        elif item.unit is not None:
+            cassa = ensure_cassa(db, group.id, item.unit.value, item.kind)
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cassa obbligatoria")
+        if cassa.id in desired:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cassa ripetuta")
+        desired[cassa.id] = (cassa, item.role)
 
-    for key, membership in list(existing.items()):
-        if key not in desired:
+    existing = {membership.cassa_id: membership for membership in user.memberships}
+    for cassa_id, membership in existing.items():
+        if cassa_id not in desired:
             guard_last_admin(db, membership)
             user.memberships.remove(membership)
 
-    for (unit, kind), role in desired.items():
-        cassa = ensure_cassa(db, group.id, unit, kind)
-        membership = existing.get((unit, kind))
+    for cassa_id, (cassa, role) in desired.items():
+        membership = existing.get(cassa_id)
         if membership is None:
             user.memberships.append(Membership(cassa_id=cassa.id, role=role))
         elif membership.role != role:
@@ -117,7 +131,7 @@ def list_users(db: DbSession, _admin: CurrentUser, admin_membership: AdminMember
     users = db.scalars(
         select(User)
         .options(selectinload(User.memberships).joinedload(Membership.cassa).joinedload(Cassa.group))
-        .where(User.group_id == group_id, User.is_system_admin.is_(False))
+        .where(User.group_id == group_id, User.is_system_admin.is_(False), User.deleted_at.is_(None))
         .order_by(User.name, User.email)
     ).all()
     return [user_to_read(user) for user in users]
@@ -148,6 +162,34 @@ def create_user(
         summary=f"Creato utente {user.email}",
     )
     return user_to_read(commit_user(db, user))
+
+
+@router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user(
+    user_id: uuid.UUID,
+    db: DbSession,
+    admin_membership: AdminMembership,
+) -> Response:
+    user = get_user_in_group_or_404(db, user_id, admin_membership.cassa.group_id)
+    if user.is_system_admin or user.id == admin_membership.user_id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Non puoi eliminare questo utente")
+    for membership in user.memberships:
+        guard_last_admin(db, membership)
+    user.memberships.clear()
+    user.deleted_at = datetime.now(UTC)
+    user.email = f"deleted-{user.id}@deleted.invalid"
+    user.name = "Utente eliminato"
+    write_audit(
+        db,
+        action="user_deleted",
+        entity_type="user",
+        entity_id=user.id,
+        cassa_id=admin_membership.cassa_id,
+        user_id=admin_membership.user_id,
+        summary="Utente eliminato",
+    )
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.put("/{user_id}", response_model=UserRead)

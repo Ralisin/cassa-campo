@@ -98,7 +98,7 @@ def overview(db: DbSession, _: SystemAdmin) -> SystemOverview:
     user_counts = dict(
         db.execute(
             select(User.group_id, func.count(User.id))
-            .where(User.is_system_admin.is_(False))
+            .where(User.is_system_admin.is_(False), User.deleted_at.is_(None))
             .group_by(User.group_id)
         ).all()
     )

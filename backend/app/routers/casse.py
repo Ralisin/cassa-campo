@@ -42,6 +42,22 @@ def create_cassa(
             status_code=status.HTTP_409_CONFLICT,
             detail="Esiste già una cassa aperta di questo tipo per questa unità",
         )
+    source = db.scalar(
+        select(Cassa)
+        .join(Membership, Membership.cassa_id == Cassa.id)
+        .where(Cassa.group_id == group_id, Cassa.unit == data.unit.value)
+        .order_by((Cassa.kind == data.kind).desc(), (Cassa.status == CassaStatus.OPEN).desc(), Cassa.year.desc())
+        .limit(1)
+    )
+    inherited = {}
+    if source:
+        inherited = {
+            membership.user_id: membership.role
+            for membership in db.scalars(select(Membership).where(Membership.cassa_id == source.id))
+        }
+    if not user.is_system_admin:
+        inherited[user.id] = operator.role
+
     cassa = Cassa(
         group_id=group_id,
         unit=data.unit.value,
@@ -52,7 +68,10 @@ def create_cassa(
     try:
         db.add(cassa)
         db.flush()
-        db.add(Membership(user_id=user.id, cassa_id=cassa.id, role=operator.role))
+        db.add_all(
+            Membership(user_id=user_id, cassa_id=cassa.id, role=role)
+            for user_id, role in inherited.items()
+        )
         write_audit(
             db,
             action="cassa_created",

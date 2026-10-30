@@ -264,7 +264,70 @@ def test_cashier_can_manage_casse(client, scenario, auth):
     created = client.post("/casse", json={"unit": "E/G", "kind": "anno", "year": 2026}, headers=headers)
     assert created.status_code == 201
     assert created.json()["kind"] == "anno"
+    cassa_id = created.json()["id"]
+    for email, role in (
+        ("luca@roma108.it", "cashier"),
+        ("massimo@roma108.it", "admin"),
+        ("carlo@roma108.it", "user"),
+    ):
+        me = client.get("/auth/me", headers=auth(email)).json()
+        assert any(m["cassa_id"] == cassa_id and m["role"] == role for m in me["memberships"])
+    assert not any(
+        m["cassa_id"] == cassa_id
+        for m in client.get("/auth/me", headers=auth("akela@roma108.it")).json()["memberships"]
+    )
     assert client.put(f"/casse/{created.json()['id']}/close", headers=headers).status_code == 200
+
+
+def test_editing_user_keeps_both_casse_of_same_unit(client, scenario, auth):
+    headers = auth("massimo@roma108.it", scenario["eg"])
+    annual = client.post("/casse", json={"unit": "E/G", "kind": "anno", "year": 2027}, headers=headers).json()
+    updated = client.put(
+        f"/users/{scenario['luca'].id}",
+        json={
+            "email": "luca@roma108.it",
+            "name": "Luca",
+            "memberships": [
+                {"cassa_id": str(scenario["eg"].id), "role": "cashier"},
+                {"cassa_id": annual["id"], "role": "cashier"},
+            ],
+        },
+        headers=headers,
+    )
+    assert updated.status_code == 200
+    assert {m["cassa_id"] for m in updated.json()["memberships"]} == {
+        str(scenario["eg"].id), annual["id"]
+    }
+
+
+def test_deleting_user_revokes_access_and_preserves_movements(client, scenario, auth):
+    user_headers = auth("carlo@roma108.it", scenario["eg"])
+    created = client.post("/movements", json=expense(supplier="Storico"), headers=user_headers)
+    assert created.status_code == 201
+
+    admin_headers = auth("massimo@roma108.it", scenario["eg"])
+    deleted = client.delete(f"/users/{scenario['carlo'].id}", headers=admin_headers)
+    assert deleted.status_code == 204
+    assert "carlo@roma108.it" not in {u["email"] for u in client.get("/users", headers=admin_headers).json()}
+    assert client.get("/auth/me", headers=user_headers).status_code == 401
+    assert client.post("/auth/login", json={"email": "carlo@roma108.it", "password": "password123"}).status_code == 401
+    movements = client.get("/movements", headers=admin_headers).json()["items"]
+    assert any(m["supplier"] == "Storico" and m["creator_name"] == "Utente eliminato" for m in movements)
+
+    recreated = client.post("/users", json={
+        "email": "carlo@roma108.it",
+        "name": "Carlo",
+        "password": "password123",
+        "memberships": [{"cassa_id": str(scenario["eg"].id), "role": "user"}],
+    }, headers=admin_headers)
+    assert recreated.status_code == 201
+    assert recreated.json()["id"] != str(scenario["carlo"].id)
+
+
+def test_cannot_delete_self_or_last_admin(client, scenario, auth):
+    headers = auth("massimo@roma108.it", scenario["eg"])
+    assert client.delete(f"/users/{scenario['massimo'].id}", headers=headers).status_code == 403
+    assert client.delete(f"/users/{scenario['akela'].id}", headers=headers).status_code == 400
 
 
 def test_operator_cannot_close_cassa_where_they_are_plain_user(client, scenario, auth, db):

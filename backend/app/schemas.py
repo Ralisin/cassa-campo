@@ -99,7 +99,8 @@ class PasswordResetConfirm(BaseModel):
 
 
 class MembershipInput(BaseModel):
-    unit: Branch
+    cassa_id: uuid.UUID | None = None
+    unit: Branch | None = None
     kind: CassaKind = CassaKind.CAMPO
     role: UserRole = UserRole.USER
 

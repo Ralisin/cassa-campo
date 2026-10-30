@@ -1,16 +1,21 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { useConfirm } from 'primevue/useconfirm'
 
 import { api } from '@/api'
+import { formatCassaYear } from '@/cassaYear'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
 const router = useRouter()
+const confirm = useConfirm()
 const users = ref([])
+const casse = ref([])
 const loading = ref(true)
 const dialogVisible = ref(false)
 const saving = ref(false)
+const deletingId = ref(null)
 const submitted = ref(false)
 const error = ref('')
 const editingId = ref(null)
@@ -33,7 +38,7 @@ const form = reactive({
   name: '',
   email: '',
   password: '',
-  memberships: [{ unit: 'E/G', role: 'user' }],
+  memberships: [],
 })
 const editing = computed(() => Boolean(editingId.value))
 const nameInvalid = computed(() => submitted.value && !form.name.trim())
@@ -74,38 +79,40 @@ const sortedUsers = computed(() =>
 const membershipsInvalid = computed(() => {
   if (!submitted.value) return false
   if (!form.memberships.length) return true
-  const units = form.memberships.map((item) => item.unit)
-  return new Set(units).size !== units.length
+  const ids = form.memberships.map((item) => item.cassa_id)
+  return ids.some((id) => !id) || new Set(ids).size !== ids.length
 })
 
-function availableUnits(index) {
-  return branches.filter(
-    (unit) => unit === form.memberships[index].unit
-      || !form.memberships.some((item, position) => position !== index && item.unit === unit),
-  )
+const cassaOptions = computed(() => casse.value.map((cassa) => ({
+  id: cassa.id,
+  label: `${cassa.unit} · ${cassa.kind === 'anno' ? 'Anno' : 'Campo'} ${formatCassaYear(cassa.kind, cassa.year)}${cassa.is_closed ? ' · chiusa' : ''}`,
+})))
+
+function availableCasse(index) {
+  return cassaOptions.value.filter((cassa) => cassa.id === form.memberships[index].cassa_id
+    || !form.memberships.some((item, position) => position !== index && item.cassa_id === cassa.id))
 }
 
 function addMembership() {
-  const used = form.memberships.map((item) => item.unit)
-  const next = branches.find((unit) => !used.includes(unit))
-  if (next) form.memberships.push({ unit: next, role: 'user' })
+  const next = cassaOptions.value.find((cassa) => !form.memberships.some((item) => item.cassa_id === cassa.id))
+  if (next) form.memberships.push({ cassa_id: next.id, role: 'user' })
 }
-
 function removeMembership(index) {
   form.memberships.splice(index, 1)
 }
 
+async function loadCasse() {
+  casse.value = await api.get('/casse')
+}
+
 async function loadUsers() {
-  try {
-    users.value = await api.get('/users')
-  } finally {
-    loading.value = false
-  }
+  users.value = await api.get('/users')
 }
 
 function openCreate() {
   editingId.value = null
-  Object.assign(form, { name: '', email: '', password: '', memberships: [{ unit: 'E/G', role: 'user' }] })
+  Object.assign(form, { name: '', email: '', password: '', memberships: [] })
+  addMembership()
   submitted.value = false
   error.value = ''
   dialogVisible.value = true
@@ -118,8 +125,8 @@ function openEdit(user) {
     email: user.email,
     password: '',
     memberships: user.memberships.length
-      ? user.memberships.map((item) => ({ unit: item.unit, kind: item.kind, role: item.role }))
-      : [{ unit: 'E/G', role: 'user' }],
+      ? user.memberships.map((item) => ({ cassa_id: item.cassa_id, role: item.role }))
+      : [{ cassa_id: cassaOptions.value[0]?.id ?? null, role: 'user' }],
   })
   submitted.value = false
   error.value = ''
@@ -135,7 +142,7 @@ async function save() {
     const payload = {
       name: form.name,
       email: form.email,
-      memberships: form.memberships.map((item) => ({ unit: item.unit, kind: item.kind, role: item.role })),
+      memberships: form.memberships.map((item) => ({ cassa_id: item.cassa_id, role: item.role })),
     }
     if (!editing.value || form.password) payload.password = form.password
     if (editing.value) await api.put(`/users/${editingId.value}`, payload)
@@ -156,6 +163,32 @@ async function save() {
   }
 }
 
+function askDelete(event, user) {
+  confirm.require({
+    target: event.currentTarget,
+    header: 'Elimina persona',
+    message: `Eliminare ${user.name}? Perderà subito l’accesso; i movimenti già registrati resteranno consultabili.`,
+    icon: 'pi pi-trash',
+    rejectLabel: 'Annulla',
+    acceptLabel: 'Elimina',
+    acceptClass: 'p-button-danger',
+    accept: () => deleteUser(user),
+  })
+}
+
+async function deleteUser(user) {
+  deletingId.value = user.id
+  error.value = ''
+  try {
+    await api.delete(`/users/${user.id}`)
+    await loadUsers()
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Eliminazione non riuscita'
+  } finally {
+    deletingId.value = null
+  }
+}
+
 function initials(name) {
   return name.split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase()
 }
@@ -164,11 +197,20 @@ function roleLabel(role) {
   return ROLE_LABELS[role] ?? role
 }
 
-onMounted(loadUsers)
+onMounted(async () => {
+  try {
+    await Promise.all([loadUsers(), loadCasse()])
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Caricamento non riuscito'
+  } finally {
+    loading.value = false
+  }
+})
 </script>
 
 <template>
   <main class="space-y-4">
+    <PMessage v-if="error && !dialogVisible" severity="error" size="small">{{ error }}</PMessage>
     <PCard class="users-header-card">
       <template #content>
         <div class="flex items-center gap-3">
@@ -227,13 +269,16 @@ onMounted(loadUsers)
                     <PTag
                       v-for="membership in user.memberships"
                       :key="membership.cassa_id"
-                      :value="`${membership.unit} · ${roleLabel(membership.role)}`"
+                      :value="`${membership.unit} · ${membership.kind === 'anno' ? 'Anno' : 'Campo'} ${formatCassaYear(membership.kind, membership.year)} · ${roleLabel(membership.role)}`"
                       :severity="ROLE_SEVERITY[membership.role]"
                     />
                     <PTag v-if="!user.memberships.length" value="Nessuna cassa" severity="danger" />
                   </div>
                 </div>
-                <i class="pi pi-pencil text-sm text-slate-400" />
+                <div class="flex items-center gap-1">
+                  <PButton icon="pi pi-pencil" text rounded size="small" aria-label="Modifica" @click.stop="openEdit(user)" />
+                  <PButton v-if="user.id !== session.user?.id" icon="pi pi-trash" text rounded size="small" severity="danger" :aria-label="`Elimina ${user.name}`" :loading="deletingId === user.id" @click.stop="askDelete($event, user)" />
+                </div>
               </div>
             </template>
           </PCard>
@@ -270,13 +315,13 @@ onMounted(loadUsers)
               icon="pi pi-plus"
               text
               size="small"
-              :disabled="form.memberships.length >= branches.length"
+              :disabled="form.memberships.length >= casse.length"
               @click="addMembership"
             />
           </div>
           <div class="space-y-2">
             <div v-for="(membership, index) in form.memberships" :key="index" class="membership-row">
-              <PSelect v-model="membership.unit" :options="availableUnits(index)" class="membership-row__unit" />
+              <PSelect v-model="membership.cassa_id" :options="availableCasse(index)" option-label="label" option-value="id" class="membership-row__cassa" />
               <PSelect v-model="membership.role" :options="roles" option-label="label" option-value="value" class="membership-row__role" />
               <PButton
                 type="button"
@@ -291,7 +336,7 @@ onMounted(loadUsers)
               />
             </div>
           </div>
-          <small v-if="membershipsInvalid" class="field-error">Assegna almeno una cassa, senza unità ripetute.</small>
+          <small v-if="membershipsInvalid" class="field-error">Assegna almeno una cassa senza duplicati.</small>
         </div>
 
         <div class="summary-dialog__field">
@@ -316,9 +361,9 @@ onMounted(loadUsers)
   align-items: center;
   gap: 0.5rem;
 }
-.membership-row__unit {
-  width: 7.5rem;
-  flex: none;
+.membership-row__cassa {
+  flex: 2 1 12rem;
+  min-width: 0;
 }
 .membership-row__role {
   flex: 1 1 auto;

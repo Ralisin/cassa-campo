@@ -125,6 +125,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(255))
     group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("groups.id"), index=True)
     is_system_admin: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     group: Mapped[Group] = relationship(back_populates="users")

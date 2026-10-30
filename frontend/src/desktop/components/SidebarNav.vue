@@ -1,4 +1,5 @@
 <script setup>
+import { formatCassaYear } from '@/cassaYear'
 import { computed, ref } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 
@@ -120,7 +121,7 @@ const userMenuItems = computed(() => [
         <span v-if="!collapsed" class="dk-side__user-info">
           <span class="dk-side__user-name">{{ session.user?.name ?? 'Utente' }}</span>
           <span v-if="session.activeCassa" class="dk-side__user-meta">
-            {{ session.activeCassa.unit }} · {{ KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind }} {{ session.activeCassa.year }}
+            {{ session.activeCassa.unit }} · {{ KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind }} {{ formatCassaYear(session.activeCassa.kind, session.activeCassa.year) }}
           </span>
         </span>
         <i v-if="!collapsed" class="pi pi-ellipsis-v dk-side__user-caret" />
@@ -135,7 +136,7 @@ const userMenuItems = computed(() => [
               <div v-if="session.activeCassa" class="mt-2 flex flex-wrap items-center gap-1.5">
                 <PTag :value="ROLE_LABELS[session.activeCassa.role] ?? session.activeCassa.role" severity="success" />
                 <PTag :value="session.activeCassa.unit" severity="info" />
-                <PTag :value="`${KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind} ${session.activeCassa.year}`" severity="warn" />
+                <PTag :value="`${KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind} ${formatCassaYear(session.activeCassa.kind, session.activeCassa.year)}`" severity="warn" />
                 <PTag v-if="session.cassaClosed" value="Chiusa" severity="secondary" />
                 <PTag :value="session.activeCassa.group_name" severity="secondary" />
               </div>

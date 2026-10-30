@@ -1,4 +1,5 @@
 <script setup>
+import { formatCassaYear } from '@/cassaYear'
 import { computed, nextTick, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 
@@ -188,7 +189,7 @@ usePolling(syncOfflineQueue, 20000)
                 <div v-if="session.activeCassa" class="mt-2 flex flex-wrap items-center gap-1.5">
                   <PTag :value="ROLE_LABELS[session.activeCassa.role] ?? session.activeCassa.role" severity="success" />
                   <PTag :value="session.activeCassa.unit" severity="info" />
-                  <PTag :value="`${KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind} ${session.activeCassa.year}`" severity="warn" />
+                  <PTag :value="`${KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind} ${formatCassaYear(session.activeCassa.kind, session.activeCassa.year)}`" severity="warn" />
                   <PTag v-if="session.cassaClosed" value="Chiusa" severity="secondary" />
                   <PTag :value="session.activeCassa.group_name" severity="secondary" />
                 </div>
@@ -206,7 +207,7 @@ usePolling(syncOfflineQueue, 20000)
         <div class="text-center">
           <h1 class="text-base font-black leading-tight text-slate-900">{{ route.meta.title }}</h1>
           <p v-if="session.activeCassa" class="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-            {{ session.activeCassa.group_name }} · {{ session.activeCassa.unit }} · {{ KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind }} {{ session.activeCassa.year }}<template v-if="session.cassaClosed"> · chiusa</template>
+            {{ session.activeCassa.group_name }} · {{ session.activeCassa.unit }} · {{ KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind }} {{ formatCassaYear(session.activeCassa.kind, session.activeCassa.year) }}<template v-if="session.cassaClosed"> · chiusa</template>
           </p>
         </div>
       </template>

@@ -1,9 +1,10 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 import { useRouter } from 'vue-router'
 
 import { api } from '@/api'
+import { defaultCassaYears, formatCassaYear, validCassaYears } from '@/cassaYear'
 import PageHeader from '@/desktop/components/PageHeader.vue'
 import { useSessionStore } from '@/stores/session'
 
@@ -21,7 +22,7 @@ const cassaGroup = ref(null)
 const cassaForm = ref({
   unit: 'E/G',
   kind: 'anno',
-  year: new Date().getFullYear(),
+  ...defaultCassaYears('anno'),
 })
 const passwordBusy = ref(false)
 const passwordMessage = ref('')
@@ -48,6 +49,8 @@ const cassaKindOptions = computed(() => {
   return KIND_OPTIONS.map((item) => ({ ...item, disabled: used.has(item.value) }))
 })
 const canCreateCassaKind = computed(() => !cassaKindOptions.value.find((item) => item.value === cassaForm.value.kind)?.disabled)
+const validYears = computed(() => validCassaYears(cassaForm.value.kind, cassaForm.value.startYear, cassaForm.value.year))
+watch(() => cassaForm.value.kind, (kind) => Object.assign(cassaForm.value, defaultCassaYears(kind)))
 
 async function loadOverview() {
   loading.value = true
@@ -99,14 +102,14 @@ function openCreateCassa(group) {
   cassaForm.value = {
     unit,
     kind: firstAvailable?.value ?? 'anno',
-    year: new Date().getFullYear(),
+    ...defaultCassaYears(firstAvailable?.value ?? 'anno'),
   }
   cassaError.value = ''
   cassaDialogOpen.value = true
 }
 
 async function createCassa() {
-  if (!cassaGroup.value) return
+  if (!cassaGroup.value || !canCreateCassaKind.value || !validYears.value) return
   cassaBusy.value = true
   cassaError.value = ''
   try {
@@ -127,7 +130,7 @@ async function createCassa() {
 function confirmCloseCassa(event, group, cassa) {
   confirm.require({
     target: event.currentTarget,
-    message: `Chiudere ${KIND_LABELS[cassa.kind] ?? cassa.kind} ${cassa.year} di ${group.name}?`,
+    message: `Chiudere ${KIND_LABELS[cassa.kind] ?? cassa.kind} ${formatCassaYear(cassa.kind, cassa.year)} di ${group.name}?`,
     icon: 'pi pi-lock',
     header: 'Conferma chiusura cassa',
     rejectLabel: 'Annulla',
@@ -140,7 +143,7 @@ function confirmCloseCassa(event, group, cassa) {
 function confirmDeleteCassa(event, group, cassa) {
   confirm.require({
     target: event.currentTarget,
-    message: `Eliminare definitivamente ${KIND_LABELS[cassa.kind] ?? cassa.kind} ${cassa.year} di ${group.name}? Verranno rimossi movimenti, rimborsi e ricevute collegati.`,
+    message: `Eliminare definitivamente ${KIND_LABELS[cassa.kind] ?? cassa.kind} ${formatCassaYear(cassa.kind, cassa.year)} di ${group.name}? Verranno rimossi movimenti, rimborsi e ricevute collegati.`,
     icon: 'pi pi-trash',
     header: 'Conferma eliminazione cassa',
     rejectLabel: 'Annulla',
@@ -325,7 +328,7 @@ onMounted(loadOverview)
               <div class="system-casse-list__unit min-w-0">
                 <p class="font-black text-slate-900">{{ cassa.unit }}</p>
                 <p class="text-xs font-semibold text-slate-400">
-                  {{ KIND_LABELS[cassa.kind] ?? cassa.kind }} {{ cassa.year }} · {{ cassa.movements_count }} movimenti
+                  {{ KIND_LABELS[cassa.kind] ?? cassa.kind }} {{ formatCassaYear(cassa.kind, cassa.year) }} · {{ cassa.movements_count }} movimenti
                 </p>
                 <PTag v-if="cassa.is_closed" value="Chiusa" severity="secondary" class="mt-1" />
               </div>
@@ -359,13 +362,18 @@ onMounted(loadOverview)
           <label for="system-cassa-unit">Unità</label>
           <PSelect id="system-cassa-unit" v-model="cassaForm.unit" :options="BRANCHES" fluid />
         </div>
+        <div v-if="cassaForm.kind === 'anno'" class="dk-field">
+          <label for="system-cassa-start-year">Anno di inizio (settembre)</label>
+          <PInputNumber id="system-cassa-start-year" v-model="cassaForm.startYear" :min="1999" :max="2099" :use-grouping="false" fluid />
+        </div>
         <div class="dk-field">
-          <label for="system-cassa-year">Anno</label>
+          <label for="system-cassa-year">{{ cassaForm.kind === 'anno' ? 'Anno di fine (giugno)' : 'Anno' }}</label>
           <PInputNumber id="system-cassa-year" v-model="cassaForm.year" :min="2000" :max="2100" :use-grouping="false" fluid />
+          <small v-if="cassaForm.kind === 'anno' && !validYears" class="field-error">L’anno di fine deve essere successivo di un anno a quello di inizio.</small>
         </div>
         <div class="flex justify-end gap-2">
           <PButton type="button" label="Annulla" severity="secondary" text @click="cassaDialogOpen = false" />
-          <PButton type="submit" label="Crea" icon="pi pi-plus" :loading="cassaBusy" :disabled="!canCreateCassaKind" />
+          <PButton type="submit" label="Crea" icon="pi pi-plus" :loading="cassaBusy" :disabled="!canCreateCassaKind || !validYears" />
         </div>
       </form>
     </PDialog>

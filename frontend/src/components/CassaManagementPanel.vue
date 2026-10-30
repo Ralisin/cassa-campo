@@ -1,8 +1,9 @@
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useConfirm } from 'primevue/useconfirm'
 
 import { api } from '@/api'
+import { defaultCassaYears, formatCassaYear, validCassaYears } from '@/cassaYear'
 import { useSessionStore } from '@/stores/session'
 
 const emit = defineEmits(['changed'])
@@ -25,7 +26,7 @@ const dialogOpen = ref(false)
 const form = reactive({
   unit: session.activeCassa?.unit ?? 'E/G',
   kind: 'anno',
-  year: new Date().getFullYear(),
+  ...defaultCassaYears('anno'),
 })
 
 const openKindsForSelectedUnit = computed(() => new Set(
@@ -34,6 +35,8 @@ const openKindsForSelectedUnit = computed(() => new Set(
     .map((item) => item.kind),
 ))
 const canCreateSelectedKind = computed(() => !openKindsForSelectedUnit.value.has(form.kind))
+const validYears = computed(() => validCassaYears(form.kind, form.startYear, form.year))
+watch(() => form.kind, (kind) => Object.assign(form, defaultCassaYears(kind)))
 const availableKinds = computed(() => KIND_OPTIONS.map((item) => ({
   ...item,
   disabled: openKindsForSelectedUnit.value.has(item.value),
@@ -81,13 +84,13 @@ function openCreate() {
   )
   const firstAvailable = KIND_OPTIONS.find((item) => !used.has(item.value))
   form.kind = firstAvailable?.value ?? 'anno'
-  form.year = new Date().getFullYear()
+  Object.assign(form, defaultCassaYears(form.kind))
   error.value = ''
   dialogOpen.value = true
 }
 
 async function createCassa() {
-  if (!canCreateSelectedKind.value) return
+  if (!canCreateSelectedKind.value || !validYears.value) return
   busy.value = true
   error.value = ''
   try {
@@ -111,7 +114,7 @@ function askClose(event, cassa) {
   confirm.require({
     target: event.currentTarget,
     header: 'Chiudi cassa',
-    message: `Chiudere ${kindLabel(cassa.kind)} ${cassa.year}? Rimarrà consultabile ma non modificabile.`,
+    message: `Chiudere ${kindLabel(cassa.kind)} ${formatCassaYear(cassa.kind, cassa.year)}? Rimarrà consultabile ma non modificabile.`,
     icon: 'pi pi-lock',
     rejectLabel: 'Annulla',
     acceptLabel: 'Chiudi',
@@ -161,7 +164,7 @@ onMounted(loadCasse)
     <div v-else class="cassa-manage__list">
       <article v-for="cassa in casse" :key="cassa.id" class="cassa-manage__row">
         <div class="min-w-0">
-          <p class="cassa-manage__row-title">{{ cassa.unit }} · {{ kindLabel(cassa.kind) }} {{ cassa.year }}</p>
+          <p class="cassa-manage__row-title">{{ cassa.unit }} · {{ kindLabel(cassa.kind) }} {{ formatCassaYear(cassa.kind, cassa.year) }}</p>
           <p class="cassa-manage__row-meta">
             {{ statusLabel(cassa) }}<template v-if="cassa.closed_at"> · chiusa il {{ cassa.closed_at }}</template>
           </p>
@@ -193,13 +196,18 @@ onMounted(loadCasse)
           <label for="cassa-unit">Unità</label>
           <PSelect id="cassa-unit" v-model="form.unit" :options="BRANCHES" fluid />
         </div>
+        <div v-if="form.kind === 'anno'" class="dk-field">
+          <label for="cassa-start-year">Anno di inizio (settembre)</label>
+          <PInputNumber id="cassa-start-year" v-model="form.startYear" :min="1999" :max="2099" :use-grouping="false" fluid />
+        </div>
         <div class="dk-field">
-          <label for="cassa-year">Anno</label>
+          <label for="cassa-year">{{ form.kind === 'anno' ? 'Anno di fine (giugno)' : 'Anno' }}</label>
           <PInputNumber id="cassa-year" v-model="form.year" :min="2000" :max="2100" :use-grouping="false" fluid />
+          <small v-if="form.kind === 'anno' && !validYears" class="field-error">L’anno di fine deve essere successivo di un anno a quello di inizio.</small>
         </div>
         <div class="flex justify-end gap-2">
           <PButton type="button" label="Annulla" severity="secondary" text @click="dialogOpen = false" />
-          <PButton type="submit" label="Crea" icon="pi pi-plus" :loading="busy" :disabled="!canCreateSelectedKind" />
+          <PButton type="submit" label="Crea" icon="pi pi-plus" :loading="busy" :disabled="!canCreateSelectedKind || !validYears" />
         </div>
       </form>
     </PDialog>

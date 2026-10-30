@@ -1,4 +1,5 @@
 <script setup>
+import { formatCassaYear } from '@/cassaYear'
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
@@ -58,7 +59,7 @@ async function openNotification(notification) {
       <div class="min-w-0">
         <h1 class="dk-topbar__heading">{{ route.meta.title }}</h1>
         <p v-if="session.activeCassa" class="dk-topbar__crumb">
-          {{ session.activeCassa.group_name }} · {{ session.activeCassa.unit }} · {{ KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind }} {{ session.activeCassa.year }}<template v-if="session.cassaClosed"> · chiusa</template>
+          {{ session.activeCassa.group_name }} · {{ session.activeCassa.unit }} · {{ KIND_LABELS[session.activeCassa.kind] ?? session.activeCassa.kind }} {{ formatCassaYear(session.activeCassa.kind, session.activeCassa.year) }}<template v-if="session.cassaClosed"> · chiusa</template>
         </p>
       </div>
     </div>

@@ -1,4 +1,5 @@
 <script setup>
+import { formatCassaYear } from '@/cassaYear'
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
@@ -24,7 +25,7 @@ function unitInitials(unit) {
 }
 
 function cassaLabel(membership) {
-  return `${KIND_LABELS[membership.kind] ?? membership.kind} ${membership.year}`
+  return `${KIND_LABELS[membership.kind] ?? membership.kind} ${formatCassaYear(membership.kind, membership.year)}`
 }
 
 function choose(cassaId) {

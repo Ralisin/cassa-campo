@@ -9,7 +9,10 @@ import KpiCard from '@/desktop/components/KpiCard.vue'
 import MovementsTable from '@/desktop/components/MovementsTable.vue'
 import PageHeader from '@/desktop/components/PageHeader.vue'
 import RollingNumber from '@/desktop/components/RollingNumber.vue'
+import { useSessionStore } from '@/stores/session'
 
+const session = useSessionStore()
+const isAnnual = computed(() => session.activeCassa?.kind === 'anno')
 const router = useRouter()
 const dashboard = ref(null)
 const recentMovements = ref([])
@@ -74,6 +77,7 @@ const centerPos = ref({ x: 0, y: 0 })
 const centerData = computed(() => {
   const row = hoverIndex.value != null ? donutRows.value[hoverIndex.value] : null
   if (row) {
+    if (isAnnual.value) return { label: row.label.toUpperCase(), value: euroShort.format(row.spent), sub: 'Spesa registrata', over: false }
     let sub = 'nessun budget'
     let over = false
     if (row.budget > 0) {
@@ -87,8 +91,8 @@ const centerData = computed(() => {
   return {
     label: 'SPESO',
     value: euroShort.format(totalSpent),
-    sub: pct === null ? 'budget non impostato' : `${pct}% del budget`,
-    over: pct !== null && totalSpent > totalBudget,
+    sub: isAnnual.value ? 'Totale spese' : pct === null ? 'budget non impostato' : `${pct}% del budget`,
+    over: !isAnnual.value && pct !== null && totalSpent > totalBudget,
   }
 })
 
@@ -283,8 +287,8 @@ usePolling(loadMovements, 12000)
           <section class="dk-card">
             <header class="dk-card__head">
               <div>
-                <h3 class="dk-card__title"><i class="pi pi-sliders-h dk-card__title-icon" /> Budget per categoria</h3>
-                <p class="dk-card__subtitle">Speso su preventivo</p>
+                <h3 class="dk-card__title"><i class="pi pi-sliders-h dk-card__title-icon" /> {{ isAnnual ? 'Spesa per categoria' : 'Budget per categoria' }}</h3>
+                <p class="dk-card__subtitle">{{ isAnnual ? 'Spese registrate durante l’anno' : 'Speso su preventivo' }}</p>
               </div>
             </header>
             <div v-if="hasCategoryData" class="space-y-4">
@@ -292,15 +296,15 @@ usePolling(loadMovements, 12000)
                 <div class="mb-1 flex items-center justify-between text-sm">
                   <span class="font-bold capitalize">{{ row.label }}</span>
                   <span class="font-semibold" :class="row.overBudget ? 'text-red-600' : 'text-slate-500'">
-                    {{ euro.format(row.spent) }}<span class="text-slate-400"> / {{ row.budget > 0 ? euro.format(row.budget) : '—' }}</span>
+                    {{ euro.format(row.spent) }}<span v-if="!isAnnual" class="text-slate-400"> / {{ row.budget > 0 ? euro.format(row.budget) : '—' }}</span>
                   </span>
                 </div>
-                <div class="dk-progress">
+                <div v-if="!isAnnual" class="dk-progress">
                   <span :style="{ width: `${row.percentage}%`, backgroundColor: row.color }" />
                 </div>
               </div>
             </div>
-            <p v-else class="dk-muted py-4 text-center text-sm">Imposta i preventivi dalle impostazioni per il confronto.</p>
+            <p v-else class="dk-muted py-4 text-center text-sm">{{ isAnnual ? 'Nessuna spesa registrata.' : 'Imposta i preventivi dalle impostazioni per il confronto.' }}</p>
           </section>
         </div>
       </div>

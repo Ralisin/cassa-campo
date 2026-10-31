@@ -10,6 +10,7 @@ from app.models import (
     CampCategoryBudget,
     CampSettings,
     Cassa,
+    CassaKind,
     CassaStatus,
     ExpenseCategory,
     Movement,
@@ -136,6 +137,7 @@ def apply_movement_input(
 
 
 def get_dashboard(db: Session, cassa_id) -> DashboardRead:
+    cassa = db.get(Cassa, cassa_id)
     settings = db.scalar(
         select(CampSettings)
         .where(CampSettings.cassa_id == cassa_id)
@@ -218,7 +220,7 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
         .order_by(Movement.created_at.desc())
     ).all()
     budgets: dict[str, Decimal] = {}
-    if settings:
+    if settings and cassa.kind != CassaKind.ANNO:
         budgets = {
             category: amount
             for category, amount in db.execute(

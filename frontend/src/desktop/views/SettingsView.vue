@@ -136,7 +136,7 @@ onMounted(load)
           </div>
         </section>
 
-        <section class="dk-card">
+        <section v-if="!isAnnual" class="dk-card">
           <h3 class="dk-card__title mb-4"><i class="pi pi-chart-bar dk-card__title-icon" /> Preventivo per categoria</h3>
           <div class="dk-field-row">
             <div v-for="category in budgetCategories" :key="category" class="dk-field">

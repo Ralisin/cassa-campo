@@ -256,18 +256,18 @@ usePolling(loadSummary)
               </div>
               <Transition name="summary-submenu">
                 <div v-if="item.expandable && categoriesExpanded" class="category-summary-submenu">
-                  <p class="category-summary-subtitle">Spesa per categoria · eseguita su preventivo</p>
+                  <p class="category-summary-subtitle">{{ isAnnual ? 'Spesa per categoria' : 'Spesa per categoria · eseguita su preventivo' }}</p>
                   <div class="category-summary-list">
                     <div v-for="category in categoryRows" :key="category.category" class="category-summary-row">
                       <div class="category-summary-copy">
                         <strong>{{ category.label }}</strong>
                         <span>
                           {{ euro.format(category.spent) }}
-                          <template v-if="category.budget > 0"> su {{ euro.format(category.budget) }}</template>
-                          <template v-else> · preventivo non impostato</template>
+                          <template v-if="!isAnnual && category.budget > 0"> su {{ euro.format(category.budget) }}</template>
+                          <template v-else-if="!isAnnual"> · preventivo non impostato</template>
                         </span>
                       </div>
-                      <div class="category-progress" :class="{ 'category-progress--over': category.overBudget }">
+                      <div v-if="!isAnnual" class="category-progress" :class="{ 'category-progress--over': category.overBudget }">
                         <span :style="{ width: `${category.percentage}%`, backgroundColor: category.progressColor }" />
                       </div>
                     </div>
@@ -487,7 +487,7 @@ usePolling(loadSummary)
           </div>
         </section>
 
-        <section class="summary-settings-section">
+        <section v-if="!isAnnual" class="summary-settings-section">
           <div class="summary-settings-section__heading">
             <span class="summary-settings-section__icon"><i class="pi pi-chart-bar" /></span>
             <div>

@@ -76,7 +76,7 @@ const budgetChart = computed(() => ({
   data: {
     labels: categoryRows.value.map((row) => row.label),
     datasets: [
-      { label: 'Preventivo', data: categoryRows.value.map((row) => row.budget), backgroundColor: 'rgba(120, 189, 152, 0.55)', borderRadius: 5, maxBarThickness: 30 },
+      ...(!isAnnual.value ? [{ label: 'Preventivo', data: categoryRows.value.map((row) => row.budget), backgroundColor: 'rgba(120, 189, 152, 0.55)', borderRadius: 5, maxBarThickness: 30 }] : []),
       { label: 'Speso', data: categoryRows.value.map((row) => row.spent), backgroundColor: '#347d59', borderRadius: 5, maxBarThickness: 30 },
     ],
   },
@@ -222,7 +222,7 @@ usePolling(loadSummary)
     </div>
 
     <div class="dk-grid dk-grid--dash dk-section">
-      <ChartCard title="Preventivo vs Speso" subtitle="Confronto per categoria" icon="pi pi-chart-bar" :empty="!hasBudgetData" empty-text="Imposta i preventivi dalle impostazioni">
+      <ChartCard :title="isAnnual ? 'Spesa per categoria' : 'Preventivo vs Speso'" :subtitle="isAnnual ? 'Spese registrate durante l’anno' : 'Confronto per categoria'" icon="pi pi-chart-bar" :empty="!hasBudgetData" :empty-text="isAnnual ? 'Nessuna spesa registrata' : 'Imposta i preventivi dalle impostazioni'">
         <div style="height: 280px"><PChart type="bar" :data="budgetChart.data" :options="budgetChart.options" /></div>
       </ChartCard>
 
@@ -234,13 +234,13 @@ usePolling(loadSummary)
               <div class="mb-1 flex items-center justify-between text-sm">
                 <span class="font-bold capitalize">{{ row.label }}</span>
                 <span class="font-semibold" :class="row.overBudget ? 'text-red-600' : 'text-slate-500'">
-                  {{ euro.format(row.spent) }}<span class="text-slate-400"> / {{ row.budget > 0 ? euro.format(row.budget) : '—' }}</span>
+                  {{ euro.format(row.spent) }}<span v-if="!isAnnual" class="text-slate-400"> / {{ row.budget > 0 ? euro.format(row.budget) : '—' }}</span>
                 </span>
               </div>
-              <div class="dk-progress"><span :style="{ width: `${row.percentage}%`, backgroundColor: row.color }" /></div>
+              <div v-if="!isAnnual" class="dk-progress"><span :style="{ width: `${row.percentage}%`, backgroundColor: row.color }" /></div>
             </div>
           </div>
-          <p v-else class="dk-muted py-4 text-center text-sm">Nessun preventivo impostato.</p>
+          <p v-else class="dk-muted py-4 text-center text-sm">{{ isAnnual ? 'Nessuna spesa registrata.' : 'Nessun preventivo impostato.' }}</p>
         </section>
 
         <div class="dk-grid dk-grid--2">

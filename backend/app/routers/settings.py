@@ -3,7 +3,7 @@ from sqlalchemy import select
 
 from app.audit_service import write_audit
 from app.dependencies import CurrentCassa, DbSession, WritableOperatorMembership
-from app.models import CampCategoryBudget, CampSettings, ExpenseCategory
+from app.models import CampCategoryBudget, CampSettings, CassaKind, ExpenseCategory
 from app.schemas import SettingsInput, SettingsRead
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -29,7 +29,10 @@ def get_settings(db: DbSession, cassa: CurrentCassa) -> SettingsRead:
             for field in SettingsRead.model_fields
             if field != "category_budgets"
         },
-        category_budgets={item.category: item.amount for item in settings.category_budgets},
+        category_budgets=(
+            {} if cassa.kind == CassaKind.ANNO
+            else {item.category: item.amount for item in settings.category_budgets}
+        ),
     )
 
 
@@ -44,14 +47,18 @@ def update_settings(
     settings.bank_initial = settings.max_budget - data.cash_initial
     db.add(settings)
     db.flush()
-    categories = db.scalars(select(ExpenseCategory).where(ExpenseCategory.active.is_(True))).all()
-    existing_budgets = {item.category: item for item in settings.category_budgets}
-    for category in categories:
-        budget = existing_budgets.get(category.slug)
-        if budget is None:
-            budget = CampCategoryBudget(settings_id=settings.id, category=category.slug)
-            settings.category_budgets.append(budget)
-        budget.amount = data.category_budgets.get(category.slug, 0)
+    if operator.cassa.kind == CassaKind.ANNO:
+        for budget in settings.category_budgets:
+            budget.amount = 0
+    else:
+        categories = db.scalars(select(ExpenseCategory).where(ExpenseCategory.active.is_(True))).all()
+        existing_budgets = {item.category: item for item in settings.category_budgets}
+        for category in categories:
+            budget = existing_budgets.get(category.slug)
+            if budget is None:
+                budget = CampCategoryBudget(settings_id=settings.id, category=category.slug)
+                settings.category_budgets.append(budget)
+            budget.amount = data.category_budgets.get(category.slug, 0)
     write_audit(
         db,
         action="settings_updated",
@@ -70,5 +77,8 @@ def update_settings(
             for field in SettingsRead.model_fields
             if field != "category_budgets"
         },
-        category_budgets={item.category: item.amount for item in settings.category_budgets},
+        category_budgets=(
+            {} if operator.cassa.kind == CassaKind.ANNO
+            else {item.category: item.amount for item in settings.category_budgets}
+        ),
     )

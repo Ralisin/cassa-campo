@@ -41,9 +41,11 @@ def ensure_cassa(
         select(Cassa).where(
             Cassa.group_id == group_id,
             Cassa.unit == unit,
-            Cassa.kind == kind,
-            Cassa.status == CassaStatus.OPEN,
-        )
+        ).order_by(
+            (Cassa.status == CassaStatus.OPEN).desc(),
+            (Cassa.kind == kind).desc(),
+            Cassa.year.desc(),
+        ).limit(1)
     )
     if cassa is None:
         cassa = Cassa(group_id=group_id, unit=unit, kind=kind)
@@ -60,6 +62,26 @@ def validate_email_domain(email: str, group: Group) -> str:
             detail=f"L'email deve appartenere al dominio @{group.email_domain}",
         )
     return email
+
+
+def person_names(name: str, first_name: str | None, last_name: str | None) -> tuple[str, str, str]:
+    if first_name is not None or last_name is not None:
+        first = (first_name or "").strip()
+        last = (last_name or "").strip()
+        if not first or not last:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Nome e cognome sono obbligatori",
+            )
+    else:
+        first, _, last = name.strip().partition(" ")
+    full_name = f"{first} {last}".strip()
+    if not first or len(full_name) > 255:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Inserisci un nome valido di massimo 255 caratteri",
+        )
+    return first, last, full_name
 
 
 def sync_memberships(
@@ -146,9 +168,12 @@ def create_user(
 ) -> UserRead:
     group = get_group_or_404(db, admin_membership.cassa.group_id)
     email = validate_email_domain(str(data.email), group)
+    first_name, last_name, full_name = person_names(data.name, data.first_name, data.last_name)
     user = User(
         email=email,
-        name=data.name.strip(),
+        name=full_name,
+        first_name=first_name,
+        last_name=last_name or None,
         password_hash=hash_password(data.password),
         group_id=group.id,
     )
@@ -208,7 +233,8 @@ def update_user(
     if user.is_system_admin:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     user.email = validate_email_domain(str(data.email), group)
-    user.name = data.name.strip()
+    user.first_name, last_name, user.name = person_names(data.name, data.first_name, data.last_name)
+    user.last_name = last_name or None
     if data.password:
         user.password_hash = hash_password(data.password)
     sync_memberships(db, user, group, data.memberships)

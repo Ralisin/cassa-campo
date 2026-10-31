@@ -58,10 +58,13 @@ def cassa_to_read(cassa: Cassa) -> CassaRead:
 
 
 def user_to_read(user: User) -> UserRead:
+    first_name, _, inferred_last_name = user.name.partition(" ")
     return UserRead(
         id=user.id,
         email=user.email,
         name=user.name,
+        first_name=user.first_name or first_name,
+        last_name=user.last_name or inferred_last_name,
         group_id=user.group_id,
         is_system_admin=user.is_system_admin,
         created_at=user.created_at,

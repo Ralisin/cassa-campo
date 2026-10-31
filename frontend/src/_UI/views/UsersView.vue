@@ -34,13 +34,15 @@ const sortOptions = [
   { label: 'Permessi', value: 'role' },
 ]
 const form = reactive({
-  name: '',
+  first_name: '',
+  last_name: '',
   email: '',
   password: '',
   memberships: [],
 })
 const editing = computed(() => Boolean(editingId.value))
-const nameInvalid = computed(() => submitted.value && !form.name.trim())
+const nameInvalid = computed(() => submitted.value && !form.first_name.trim())
+const lastNameInvalid = computed(() => submitted.value && !form.last_name.trim())
 const emailInvalid = computed(() => submitted.value && !form.email.trim())
 const passwordInvalid = computed(
   () => submitted.value && ((!editing.value || form.password) && form.password.length < 8),
@@ -108,7 +110,7 @@ async function loadUsers() {
 
 function openCreate() {
   editingId.value = null
-  Object.assign(form, { name: '', email: '', password: '', memberships: [] })
+  Object.assign(form, { first_name: '', last_name: '', email: '', password: '', memberships: [] })
   addMembership()
   submitted.value = false
   error.value = ''
@@ -118,7 +120,8 @@ function openCreate() {
 function openEdit(user) {
   editingId.value = user.id
   Object.assign(form, {
-    name: user.name,
+    first_name: user.first_name ?? user.name.split(' ')[0],
+    last_name: user.last_name ?? user.name.split(' ').slice(1).join(' '),
     email: user.email,
     password: '',
     memberships: user.memberships.length
@@ -133,11 +136,13 @@ function openEdit(user) {
 async function save() {
   submitted.value = true
   error.value = ''
-  if (nameInvalid.value || emailInvalid.value || passwordInvalid.value || membershipsInvalid.value) return
+  if (nameInvalid.value || lastNameInvalid.value || emailInvalid.value || passwordInvalid.value || membershipsInvalid.value) return
   saving.value = true
   try {
     const payload = {
-      name: form.name,
+      name: `${form.first_name.trim()} ${form.last_name.trim()}`,
+      first_name: form.first_name.trim(),
+      last_name: form.last_name.trim(),
       email: form.email,
       memberships: form.memberships.map((item) => ({ unit: item.unit, role: item.role })),
     }
@@ -290,9 +295,14 @@ onMounted(async () => {
           {{ editing ? 'Aggiorna i dati e i ruoli per unità.' : 'Crea un accesso e assegna una o più unità.' }}
         </p>
         <div class="summary-dialog__field">
-          <label for="user-name">Nome <span class="required-mark">*</span></label>
-          <PInputText id="user-name" v-model="form.name" :invalid="nameInvalid" fluid />
+          <label for="user-first-name">Nome <span class="required-mark">*</span></label>
+          <PInputText id="user-first-name" v-model="form.first_name" :invalid="nameInvalid" autocomplete="given-name" fluid />
           <small v-if="nameInvalid" class="field-error">Il nome è obbligatorio.</small>
+        </div>
+        <div class="summary-dialog__field">
+          <label for="user-last-name">Cognome <span class="required-mark">*</span></label>
+          <PInputText id="user-last-name" v-model="form.last_name" :invalid="lastNameInvalid" autocomplete="family-name" fluid />
+          <small v-if="lastNameInvalid" class="field-error">Il cognome è obbligatorio.</small>
         </div>
         <div class="summary-dialog__field">
           <label for="user-email">Email <span class="required-mark">*</span></label>

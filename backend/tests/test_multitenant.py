@@ -311,6 +311,48 @@ def test_editing_unit_role_updates_both_casse(client, scenario, auth):
     assert {m["role"] for m in updated.json()["memberships"]} == {"admin"}
 
 
+def test_editing_full_name_with_closed_camp_and_open_annual_cassa(client, scenario, auth):
+    headers = auth("massimo@roma108.it", scenario["eg"])
+    annual = client.post(
+        "/casse", json={"unit": "E/G", "kind": "anno", "year": 2027}, headers=headers
+    ).json()
+    assert client.put(f"/casse/{scenario['eg'].id}/close", headers=headers).status_code == 200
+
+    annual_headers = auth("massimo@roma108.it", annual["id"])
+    updated = client.put(
+        f"/users/{scenario['massimo'].id}",
+        json={
+            "name": "Massimo Buniy",
+            "first_name": "Massimo",
+            "last_name": "Buniy",
+            "email": "massimo@roma108.it",
+            "memberships": [{"unit": "E/G", "role": "admin"}],
+        },
+        headers=annual_headers,
+    )
+    assert updated.status_code == 200
+    assert updated.json()["name"] == "Massimo Buniy"
+    assert updated.json()["first_name"] == "Massimo"
+    assert updated.json()["last_name"] == "Buniy"
+    assert {item["cassa_id"] for item in updated.json()["memberships"]} == {
+        str(scenario["eg"].id), annual["id"]
+    }
+    assert len(client.get("/casse", headers=annual_headers).json()) == 3
+
+    incomplete = client.put(
+        f"/users/{scenario['massimo'].id}",
+        json={
+            "name": "Massimo",
+            "first_name": "Massimo",
+            "email": "massimo@roma108.it",
+            "memberships": [{"unit": "E/G", "role": "admin"}],
+        },
+        headers=annual_headers,
+    )
+    assert incomplete.status_code == 400
+    assert incomplete.json()["detail"] == "Nome e cognome sono obbligatori"
+
+
 def test_deleting_user_revokes_access_and_preserves_movements(client, scenario, auth):
     user_headers = auth("carlo@roma108.it", scenario["eg"])
     created = client.post("/movements", json=expense(supplier="Storico"), headers=user_headers)

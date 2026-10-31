@@ -36,6 +36,8 @@ function errorMessage(detail) {
         operation_date: 'Data operazione',
         notes: 'Note',
         category: 'Categoria',
+        first_name: 'Nome',
+        last_name: 'Cognome',
         cash_initial: 'Contanti iniziali',
       }
       return `${labels[field] ?? field ?? 'Dato'}: ${item.msg}`
@@ -61,6 +63,9 @@ async function request(path, options = {}) {
   })
   if (!response.ok) {
     const body = await response.json().catch(() => null)
+    if (response.status >= 500 && !body?.detail) {
+      throw new ApiError('Errore del server. Riprova tra poco.', response.status)
+    }
     throw new ApiError(errorMessage(body?.detail), response.status)
   }
   if (response.status === 204) return undefined

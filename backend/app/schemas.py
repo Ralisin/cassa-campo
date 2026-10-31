@@ -78,6 +78,8 @@ class UserRead(ApiModel):
     id: uuid.UUID
     email: EmailStr
     name: str
+    first_name: str
+    last_name: str
     group_id: uuid.UUID
     is_system_admin: bool = False
     created_at: datetime
@@ -108,6 +110,8 @@ class MembershipInput(BaseModel):
 class UserCreate(BaseModel):
     email: EmailStr
     name: str = Field(min_length=1, max_length=255)
+    first_name: str | None = Field(default=None, min_length=1, max_length=255)
+    last_name: str | None = Field(default=None, min_length=1, max_length=255)
     password: str = Field(min_length=8, max_length=72)
     memberships: list[MembershipInput] = Field(min_length=1)
 
@@ -115,6 +119,8 @@ class UserCreate(BaseModel):
 class UserUpdate(BaseModel):
     email: EmailStr
     name: str = Field(min_length=1, max_length=255)
+    first_name: str | None = Field(default=None, min_length=1, max_length=255)
+    last_name: str | None = Field(default=None, min_length=1, max_length=255)
     password: str | None = Field(default=None, min_length=8, max_length=72)
     memberships: list[MembershipInput] = Field(min_length=1)
 

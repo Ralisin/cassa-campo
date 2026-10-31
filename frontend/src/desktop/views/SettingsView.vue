@@ -2,8 +2,12 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import { api } from '@/api'
+import { validCassaYears } from '@/cassaYear'
 import PageHeader from '@/desktop/components/PageHeader.vue'
+import { useSessionStore } from '@/stores/session'
 
+const session = useSessionStore()
+const isAnnual = computed(() => session.activeCassa?.kind === 'anno')
 const saving = ref(false)
 const loading = ref(true)
 const error = ref('')
@@ -12,13 +16,14 @@ const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR'
 
 const CATEGORY_LABELS = { vitto: 'Vitto', alloggio: 'Alloggio', trasporti: 'Trasporti', varie: 'Varie' }
 const settings = reactive({
-  camp_year: new Date().getFullYear(),
+  camp_year: session.activeCassa?.year ?? new Date().getFullYear(),
   camp_name: 'Campo',
   participants: 0,
   quota_per_person: 0,
   cash_initial: 0,
   category_budgets: { vitto: 0, alloggio: 0, trasporti: 0, varie: 0 },
 })
+const annualStartYear = ref(settings.camp_year - 1)
 const calculatedBudget = computed(() => Number(settings.participants) * Number(settings.quota_per_person))
 const calculatedBankInitial = computed(() => calculatedBudget.value - Number(settings.cash_initial))
 const budgetCategories = computed(() => Object.keys(settings.category_budgets))
@@ -28,17 +33,25 @@ async function load() {
   error.value = ''
   try {
     Object.assign(settings, await api.get('/settings'))
+    annualStartYear.value = settings.camp_year - 1
   } catch (cause) {
-    if (cause?.status !== 404) error.value = cause instanceof Error ? cause.message : 'Caricamento non riuscito'
+    if (cause?.status === 404) {
+      settings.camp_year = session.activeCassa?.year ?? settings.camp_year
+      annualStartYear.value = settings.camp_year - 1
+    } else error.value = cause instanceof Error ? cause.message : 'Caricamento non riuscito'
   } finally {
     loading.value = false
   }
 }
 
 async function save() {
-  saving.value = true
   error.value = ''
   success.value = false
+  if (isAnnual.value && !validCassaYears('anno', annualStartYear.value, settings.camp_year)) {
+    error.value = 'Inserisci due anni consecutivi, per esempio 2026 e 2027.'
+    return
+  }
+  saving.value = true
   try {
     await api.put('/settings', settings)
     success.value = true
@@ -55,7 +68,7 @@ onMounted(load)
 
 <template>
   <div>
-    <PageHeader title="Impostazioni" subtitle="Dati del campo, saldi iniziali e preventivi">
+    <PageHeader title="Impostazioni" :subtitle="`${isAnnual ? 'Dati dell’anno scout' : 'Dati del campo'}, saldi iniziali e preventivi`">
       <template #actions>
         <PButton label="Salva" icon="pi pi-check" class="dk-topbar__cta" :loading="saving" @click="save" />
       </template>
@@ -85,15 +98,21 @@ onMounted(load)
     <div v-else class="dk-form-grid">
       <div class="dk-stack">
         <section class="dk-card">
-          <h3 class="dk-card__title mb-4"><i class="pi pi-calendar dk-card__title-icon" /> Dati del campo</h3>
+          <h3 class="dk-card__title mb-4"><i class="pi pi-calendar dk-card__title-icon" /> {{ isAnnual ? 'Dati dell’anno scout' : 'Dati del campo' }}</h3>
           <div class="dk-field-row">
             <div class="dk-field">
-              <label for="camp-name">Nome campo</label>
+              <label for="camp-name">{{ isAnnual ? 'Nome anno scout' : 'Nome campo' }}</label>
               <PInputText id="camp-name" v-model="settings.camp_name" placeholder="Es. Campo estivo" fluid />
             </div>
             <div class="dk-field">
-              <label for="camp-year">Anno</label>
-              <PInputNumber id="camp-year" v-model="settings.camp_year" :min="2000" :max="2100" :use-grouping="false" fluid />
+              <label :for="isAnnual ? 'school-year-start' : 'camp-year'">{{ isAnnual ? 'Anno scout' : 'Anno' }}</label>
+              <div v-if="isAnnual" class="flex items-center gap-2">
+                <PInputNumber id="school-year-start" v-model="annualStartYear" aria-label="Anno iniziale" :min="1999" :max="2099" :use-grouping="false" class="min-w-0 flex-1" fluid />
+                <span aria-hidden="true">/</span>
+                <PInputNumber id="school-year-end" v-model="settings.camp_year" aria-label="Anno finale" :min="2000" :max="2100" :use-grouping="false" class="min-w-0 flex-1" fluid />
+              </div>
+              <PInputNumber v-else id="camp-year" v-model="settings.camp_year" :min="2000" :max="2100" :use-grouping="false" fluid />
+              <small v-if="isAnnual" class="dk-field__hint">Da settembre del primo anno a giugno del secondo.</small>
             </div>
           </div>
         </section>

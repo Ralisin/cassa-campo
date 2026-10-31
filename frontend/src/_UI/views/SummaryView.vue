@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 
 import { api, downloadExcel } from '@/api'
+import { validCassaYears } from '@/cassaYear'
 import { usePolling } from '@/composables/usePolling'
 import { useSessionStore } from '@/stores/session'
 
@@ -21,9 +22,10 @@ const transferActionError = ref('')
 const transfers = ref([])
 const editingTransferId = ref(null)
 const session = useSessionStore()
+const isAnnual = computed(() => session.activeCassa?.kind === 'anno')
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const settings = reactive({
-  camp_year: new Date().getFullYear(),
+  camp_year: session.activeCassa?.year ?? new Date().getFullYear(),
   camp_name: 'Campo',
   participants: 0,
   quota_per_person: 0,
@@ -35,6 +37,7 @@ const settings = reactive({
     varie: 0,
   },
 })
+const annualStartYear = ref(settings.camp_year - 1)
 const calculatedBudget = computed(() => Number(settings.participants) * Number(settings.quota_per_person))
 const calculatedBankInitial = computed(() => calculatedBudget.value - Number(settings.cash_initial))
 const transfer = reactive({
@@ -108,8 +111,12 @@ async function openSettings() {
   settingsError.value = ''
   try {
     Object.assign(settings, await api.get('/settings'))
+    annualStartYear.value = settings.camp_year - 1
   } catch (cause) {
-    if (cause?.status !== 404) {
+    if (cause?.status === 404) {
+      settings.camp_year = session.activeCassa?.year ?? settings.camp_year
+      annualStartYear.value = settings.camp_year - 1
+    } else {
       settingsError.value = cause instanceof Error ? cause.message : 'Caricamento non riuscito'
     }
   }
@@ -117,8 +124,12 @@ async function openSettings() {
 }
 
 async function saveInitialBalances() {
-  savingSettings.value = true
   settingsError.value = ''
+  if (isAnnual.value && !validCassaYears('anno', annualStartYear.value, settings.camp_year)) {
+    settingsError.value = 'Inserisci due anni consecutivi, per esempio 2026 e 2027.'
+    return
+  }
+  savingSettings.value = true
   try {
     await api.put('/settings', settings)
     await loadDashboard()
@@ -417,7 +428,7 @@ usePolling(loadSummary)
       </PCard>
     </section>
 
-    <PDialog v-model:visible="settingsDialog" modal header="Imposta dati campo e saldi" class="summary-dialog summary-settings-dialog w-[calc(100vw-2rem)] max-w-2xl">
+    <PDialog v-model:visible="settingsDialog" modal :header="isAnnual ? 'Imposta anno scout e saldi' : 'Imposta dati campo e saldi'" class="summary-dialog summary-settings-dialog w-[calc(100vw-2rem)] max-w-2xl">
       <form class="summary-dialog__form summary-settings-dialog__form" @submit.prevent="saveInitialBalances">
         <p class="summary-dialog__intro">
           <i class="pi pi-info-circle" />
@@ -428,18 +439,24 @@ usePolling(loadSummary)
           <div class="summary-settings-section__heading">
             <span class="summary-settings-section__icon"><i class="pi pi-calendar" /></span>
             <div>
-              <strong>Dati del campo</strong>
-              <p>Identificano il campo nei report esportati.</p>
+              <strong>{{ isAnnual ? 'Dati dell’anno scout' : 'Dati del campo' }}</strong>
+              <p>{{ isAnnual ? 'Identificano l’anno scout nei report esportati.' : 'Identificano il campo nei report esportati.' }}</p>
             </div>
           </div>
           <div class="summary-settings-grid summary-settings-grid--camp">
             <div class="summary-dialog__field">
-              <label for="camp-name">Nome campo</label>
+              <label for="camp-name">{{ isAnnual ? 'Nome anno scout' : 'Nome campo' }}</label>
               <PInputText id="camp-name" v-model="settings.camp_name" placeholder="Es. Campo estivo" fluid />
             </div>
             <div class="summary-dialog__field">
-              <label for="camp-year">Anno</label>
-              <PInputNumber id="camp-year" v-model="settings.camp_year" :min="2000" :max="2100" :use-grouping="false" fluid />
+              <label :for="isAnnual ? 'school-year-start' : 'camp-year'">{{ isAnnual ? 'Anno scout' : 'Anno' }}</label>
+              <div v-if="isAnnual" class="flex items-center gap-2">
+                <PInputNumber id="school-year-start" v-model="annualStartYear" aria-label="Anno iniziale" :min="1999" :max="2099" :use-grouping="false" class="min-w-0 flex-1" fluid />
+                <span aria-hidden="true">/</span>
+                <PInputNumber id="school-year-end" v-model="settings.camp_year" aria-label="Anno finale" :min="2000" :max="2100" :use-grouping="false" class="min-w-0 flex-1" fluid />
+              </div>
+              <PInputNumber v-else id="camp-year" v-model="settings.camp_year" :min="2000" :max="2100" :use-grouping="false" fluid />
+              <small v-if="isAnnual">Da settembre del primo anno a giugno del secondo.</small>
             </div>
           </div>
         </section>

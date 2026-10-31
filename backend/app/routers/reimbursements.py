@@ -22,6 +22,7 @@ def reimbursement_load_options():
     return (
         joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
         joinedload(Movement.creator),
+        joinedload(Movement.performer),
         selectinload(Movement.receipts),
     )
 

@@ -31,6 +31,7 @@ const rows = computed(() => {
     ['pi pi-building', 'Fornitore', m.supplier],
     ['pi pi-file-edit', 'Note', m.notes || '—'],
     ['pi pi-user', 'Inserito da', m.creator_name],
+    ...(m.type === 'uscita' ? [['pi pi-shopping-bag', 'Spesa fatta da', m.performed_by_name]] : []),
   ]
 })
 

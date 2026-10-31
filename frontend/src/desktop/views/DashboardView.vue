@@ -139,6 +139,7 @@ const trend = computed(() => {
   }
   for (const movement of recentMovements.value) {
     if (movement.type !== 'uscita') continue
+    if (!isAnnual.value && movement.unit !== session.activeCassa?.unit) continue
     if (buckets.has(movement.operation_date)) {
       buckets.set(movement.operation_date, buckets.get(movement.operation_date) + Number(movement.amount))
     }

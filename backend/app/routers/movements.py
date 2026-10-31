@@ -16,7 +16,16 @@ from app.dependencies import (
     WritableMembership,
     can_edit_movement,
 )
-from app.models import Movement, MovementReimbursement, MovementType, PaymentMethod, User
+from app.models import (
+    Cassa,
+    Membership,
+    Movement,
+    MovementReimbursement,
+    MovementType,
+    PaymentMethod,
+    User,
+    UserRole,
+)
 from app.notification_service import notify_admins_of_movement
 from app.schemas import (
     MovementCreatorRead,
@@ -55,6 +64,7 @@ def get_movement_or_404(db: DbSession, movement_id: uuid.UUID, cassa_id: uuid.UU
         .options(
             joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
             joinedload(Movement.creator),
+            joinedload(Movement.performer),
             selectinload(Movement.receipts),
         )
         .where(Movement.id == movement_id, Movement.cassa_id == cassa_id)
@@ -63,6 +73,36 @@ def get_movement_or_404(db: DbSession, movement_id: uuid.UUID, cassa_id: uuid.UU
     if not movement:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Movement not found")
     return movement
+
+
+def set_performer(db: DbSession, movement: Movement, requested_id: uuid.UUID | None,
+                  membership: WritableMembership) -> None:
+    if requested_id is None:
+        if movement.performed_by_id is None:
+            movement.performed_by_id = membership.user_id
+        return
+    if requested_id != membership.user_id:
+        if membership.role != UserRole.ADMIN:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin role required")
+        eligible = db.scalar(
+            select(User.id)
+            .join(Membership, Membership.user_id == User.id)
+            .join(Cassa, Cassa.id == Membership.cassa_id)
+            .where(
+                User.id == requested_id,
+                User.group_id == membership.cassa.group_id,
+                User.deleted_at.is_(None),
+                Cassa.group_id == membership.cassa.group_id,
+                Cassa.unit == movement.unit,
+            )
+            .limit(1)
+        )
+        if eligible is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="La persona selezionata non appartiene all'unità del movimento",
+            )
+    movement.performed_by_id = requested_id
 
 
 @router.get("", response_model=MovementPage)
@@ -110,6 +150,7 @@ def list_movements(
         .options(
             joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
             joinedload(Movement.creator),
+            joinedload(Movement.performer),
             selectinload(Movement.receipts),
         )
         .where(*filters)
@@ -166,6 +207,7 @@ def list_deleted_movements(db: DbSession, membership: WritableMembership) -> lis
         .options(
             joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
             joinedload(Movement.creator),
+            joinedload(Movement.performer),
             selectinload(Movement.receipts),
         )
         .where(Movement.cassa_id == membership.cassa_id, Movement.deleted_at.is_not(None))
@@ -185,6 +227,7 @@ def create_movement(data: MovementInput, db: DbSession, membership: WritableMemb
     cassa = membership.cassa
     movement = Movement(created_by=membership.user_id)
     apply_movement_input(movement, data, cassa, membership.role)
+    set_performer(db, movement, data.performed_by_id, membership)
     db.add(movement)
     db.flush()
     notify_admins_of_movement(
@@ -218,6 +261,7 @@ def update_movement(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
     reimbursement_requested = movement.reimbursement is None and data.needs_reimbursement
     apply_movement_input(movement, data, cassa, membership.role)
+    set_performer(db, movement, data.performed_by_id, membership)
     if reimbursement_requested:
         notify_admins_of_movement(db, movement, membership.user, reimbursement_requested=True)
     write_audit(

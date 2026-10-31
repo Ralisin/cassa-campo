@@ -8,7 +8,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from app.audit_service import write_audit
 from app.core.config import settings
-from app.dependencies import CurrentCassa, CurrentMembership, DbSession, WritableMembership, can_edit_movement
+from app.dependencies import CurrentCassa, DbSession, WritableMembership, can_edit_movement
 from app.models import Membership, Movement, MovementReceipt, MovementReimbursement
 from app.receipt_storage import ReceiptStorage, get_receipt_storage
 from app.schemas import MovementReceiptRead
@@ -24,6 +24,7 @@ def get_movement_or_404(db: DbSession, movement_id: uuid.UUID, cassa_id: uuid.UU
         .options(
             joinedload(Movement.reimbursement).joinedload(MovementReimbursement.reimbursed_by_user),
             joinedload(Movement.creator),
+            joinedload(Movement.performer),
             selectinload(Movement.receipts),
         )
         .where(

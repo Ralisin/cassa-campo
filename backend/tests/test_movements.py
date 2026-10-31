@@ -15,7 +15,13 @@ from app.models import (
     User,
     UserRole,
 )
-from app.routers.movements import delete_movement, list_deleted_movements, list_movements, restore_movement
+from app.routers.movements import (
+    delete_movement,
+    list_deleted_movements,
+    list_movements,
+    restore_movement,
+    set_performer,
+)
 
 
 def make_movement(
@@ -75,6 +81,37 @@ def test_list_movements_rejects_invalid_cursor(setup) -> None:
     with pytest.raises(HTTPException) as error:
         list_movements(db, cassa, cursor="not-a-cursor")
     assert error.value.status_code == 422
+
+
+def test_admin_can_select_performer_from_movement_unit(
+    db, make_group, make_cassa, make_user, membership_of
+) -> None:
+    group = make_group()
+    eg = make_cassa(group, "E/G")
+    rs = make_cassa(group, "R/S")
+    admin = make_user(group, "admin@roma108.it", memberships=[(eg, UserRole.ADMIN)])
+    member = make_user(group, "member@roma108.it", memberships=[(eg, UserRole.USER)])
+    outsider = make_user(group, "outsider@roma108.it", memberships=[(rs, UserRole.USER)])
+    movement = make_movement(eg, admin, "Spesa", date.today(), datetime.now())
+    admin_membership = membership_of(admin, eg)
+
+    set_performer(db, movement, member.id, admin_membership)
+    assert movement.performed_by_id == member.id
+
+    with pytest.raises(HTTPException) as error:
+        set_performer(db, movement, outsider.id, admin_membership)
+    assert error.value.status_code == 422
+
+
+def test_non_admin_cannot_select_another_performer(setup, membership_of) -> None:
+    db, _, cassa, alice, bob = setup
+    movement = make_movement(cassa, alice, "Spesa", date.today(), datetime.now())
+    set_performer(db, movement, None, membership_of(alice, cassa))
+    assert movement.performed_by_id == alice.id
+
+    with pytest.raises(HTTPException) as error:
+        set_performer(db, movement, bob.id, membership_of(alice, cassa))
+    assert error.value.status_code == 403
 
 
 def test_user_can_delete_own_movement_and_related_notifications(setup, membership_of) -> None:

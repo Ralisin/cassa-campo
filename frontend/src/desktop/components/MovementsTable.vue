@@ -117,7 +117,7 @@ function onRowClick(event) {
     <PColumn v-if="!compact" field="creator_name" header="Inserito da">
       <template #body="{ data }">
         <Skel v-if="data.__skel" w="5rem" h="0.8rem" />
-        <span v-else class="dk-table__creator"><i class="pi pi-user" />{{ data.creator_name }}</span>
+        <span v-else class="dk-table__creator"><i class="pi pi-user" />{{ data.creator_name }}<small v-if="data.type === 'uscita' && data.performed_by_id !== data.created_by" class="block">Spesa di {{ data.performed_by_name }}</small></span>
       </template>
     </PColumn>
 

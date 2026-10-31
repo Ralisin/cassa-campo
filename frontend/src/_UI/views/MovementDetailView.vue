@@ -26,6 +26,7 @@ const rows = [
   ['pi pi-tag', 'Categoria', 'category'],
   ['pi pi-building', 'Fornitore', 'supplier'],
   ['pi pi-file-edit', 'Note', 'notes'],
+  ['pi pi-shopping-bag', 'Spesa fatta da', 'performed_by_name'],
 ]
 async function loadMovement() {
   movement.value = await api.get(`/movements/${route.params.id}`)

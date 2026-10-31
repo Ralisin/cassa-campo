@@ -18,13 +18,25 @@ const submitted = ref(false)
 const receiptInput = ref(null)
 const receiptCameraInput = ref(null)
 const selectedReceipts = ref([])
+const users = ref([])
 const balanceTypes = [
   { label: 'Campo', value: 'C' },
   { label: 'Ordinario', value: 'O' },
   { label: 'Autofinanziamento', value: 'A' },
 ]
-const unitOptions = ['L/C', 'E/G', 'R/S', 'CoCa', 'Gruppo']
-const canChooseUnit = computed(() => session.isOperator && session.activeCassa?.kind === 'anno')
+const unitOptions = computed(() => session.activeCassa?.kind === 'campo'
+  ? [...new Set([session.activeCassa.unit, 'Gruppo'])]
+  : ['L/C', 'E/G', 'R/S', 'CoCa', 'Gruppo'])
+const canChooseUnit = computed(() => session.activeCassa?.kind === 'campo' || session.isOperator)
+const performerOptions = computed(() => {
+  const candidates = users.value
+    .filter((user) => user.memberships.some((membership) => membership.unit === form.unit))
+    .map((user) => ({ label: user.name, value: user.id }))
+  if (session.user && !candidates.some((option) => option.value === session.user.id)) {
+    candidates.unshift({ label: session.user.name, value: session.user.id })
+  }
+  return candidates
+})
 const categories = [
   { label: 'Vitto', value: 'vitto' },
   { label: 'Alloggio', value: 'alloggio' },
@@ -63,6 +75,12 @@ const form = reactive({
   amount: 0,
   notes: '',
   needs_reimbursement: false,
+  performed_by_id: session.user?.id ?? null,
+})
+watch(() => form.unit, () => {
+  if (session.isAdmin && !performerOptions.value.some((option) => option.value === form.performed_by_id)) {
+    form.performed_by_id = session.user?.id ?? null
+  }
 })
 const amountInvalid = computed(() => submitted.value && (!Number.isFinite(Number(form.amount)) || Number(form.amount) <= 0))
 const supplierInvalid = computed(() => submitted.value && !form.supplier.trim())
@@ -106,6 +124,8 @@ watch(
 
 onMounted(async () => {
   if (!session.user) await session.loadUser()
+  form.performed_by_id = session.user?.id ?? null
+  if (session.isAdmin) users.value = await api.get('/users')
   if (!editing.value) {
     form.unit = session.activeCassa?.unit ?? ''
     return
@@ -131,6 +151,7 @@ async function submit() {
   }
   saving.value = true
   const payload = { ...form }
+  if (!session.isAdmin) delete payload.performed_by_id
   try {
     let saved
     try {
@@ -235,8 +256,11 @@ function formatBytes(bytes) {
               <div><label for="supplier">Fornitore <span class="required-mark">*</span></label><PInputText id="supplier" v-model="form.supplier" :invalid="supplierInvalid" placeholder="Es. Esselunga" fluid /><small v-if="supplierInvalid" class="field-error">Il fornitore è obbligatorio.</small></div>
             </div>
             <div class="movement-form-field-pair">
-              <div><label for="unit">Unità</label><PSelect v-if="canChooseUnit" id="unit" v-model="form.unit" :options="unitOptions" fluid /><PInputText v-else id="unit" v-model="form.unit" disabled fluid /><small v-if="!canChooseUnit" class="mt-1 block text-[0.67rem] font-medium text-slate-500">Definita dalla cassa attiva.</small></div>
+              <div><label for="unit">Unità</label><PSelect v-if="canChooseUnit" id="unit" v-model="form.unit" :options="unitOptions" fluid /><PInputText v-else id="unit" v-model="form.unit" disabled fluid /><small v-if="session.activeCassa?.kind === 'campo'" class="mt-1 block text-[0.67rem] font-medium text-slate-500">Scegli Gruppo per una spesa pagata da questa cassa ma attribuita al gruppo.</small><small v-if="!canChooseUnit" class="mt-1 block text-[0.67rem] font-medium text-slate-500">Definita dalla cassa attiva.</small></div>
               <div><label for="balance-type">Bilancio</label><PSelect id="balance-type" v-model="form.balance_type" :options="balanceTypes" option-label="label" option-value="value" fluid /></div>
+            </div>
+            <div v-if="session.isAdmin && form.type === 'uscita'" class="movement-form-field-pair">
+              <div><label for="performed-by">Chi ha fatto la spesa</label><PSelect id="performed-by" v-model="form.performed_by_id" :options="performerOptions" option-label="label" option-value="value" filter fluid /></div>
             </div>
             <div v-if="form.type === 'uscita'" class="movement-form-field-pair">
               <div>

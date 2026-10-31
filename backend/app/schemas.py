@@ -130,13 +130,14 @@ class MovementInput(BaseModel):
     type: MovementType
     payment_method: PaymentMethod
     supplier: str = Field(min_length=1, max_length=255)
-    # Annual cash boxes can record expenses for any unit; camp boxes stay scoped.
+    # Annual cash boxes can record any unit; camp boxes can attribute payments to Gruppo.
     unit: Branch | None = None
     balance_type: BalanceType = BalanceType.CAMP
     category: ExpenseCategorySlug | None = None
     amount: Decimal = Field(gt=0, decimal_places=2)
     notes: str = Field(min_length=1)
     needs_reimbursement: bool = False
+    performed_by_id: uuid.UUID | None = None
 
     @model_validator(mode="after")
     def validate_reimbursement(self) -> "MovementInput":
@@ -176,6 +177,8 @@ class MovementRead(ApiModel):
     created_by: uuid.UUID
     creator_name: str
     creator_email: EmailStr
+    performed_by_id: uuid.UUID
+    performed_by_name: str
     needs_reimbursement: bool
     reimbursement_status: str | None
     reimbursed_at: datetime | None

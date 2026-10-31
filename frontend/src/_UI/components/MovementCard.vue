@@ -37,6 +37,7 @@ const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR'
             <div class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-slate-500">
               <i class="pi pi-user text-[10px]" />
               <span class="truncate">Inserito da {{ movement.creator_name }}</span>
+              <span v-if="movement.type === 'uscita' && movement.performed_by_id !== movement.created_by" class="truncate">· Spesa di {{ movement.performed_by_name }}</span>
             </div>
             <p v-if="movement.notes" class="mt-1 truncate text-xs text-slate-600">{{ movement.notes }}</p>
           </div>

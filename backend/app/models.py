@@ -207,10 +207,12 @@ class Movement(Base):
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     notes: Mapped[str | None] = mapped_column(Text)
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    performed_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     deleted_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
 
     creator: Mapped[User] = relationship(back_populates="movements", foreign_keys=[created_by])
+    performer: Mapped[User | None] = relationship(foreign_keys=[performed_by_id])
     deleter: Mapped[User | None] = relationship(foreign_keys=[deleted_by])
     expense_category: Mapped[ExpenseCategory | None] = relationship(back_populates="movements")
     reimbursement: Mapped["MovementReimbursement | None"] = relationship(

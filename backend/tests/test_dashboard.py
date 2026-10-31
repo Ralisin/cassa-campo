@@ -6,6 +6,7 @@ from app.models import (
     BalanceType,
     CampCategoryBudget,
     CampSettings,
+    CassaKind,
     Movement,
     MovementReimbursement,
     MovementType,
@@ -111,6 +112,38 @@ def test_group_expenses_reduce_cash_but_not_unit_budget(
     assert alloggio.spent == Decimal("70.00")
     assert alloggio.budget == Decimal("400.00")
     assert not any(item.kind == "high_expense" for item in dashboard.anomalies)
+
+
+def test_annual_eg_dashboard_excludes_group_expense_from_spending(
+    db, make_group, make_cassa, make_user
+) -> None:
+    group = make_group()
+    cassa = make_cassa(group, "E/G")
+    cassa.kind = CassaKind.ANNO
+    user = make_user(group, "utente@roma108.it", memberships=[(cassa, UserRole.USER)])
+    db.add_all([
+        CampSettings(
+            cassa_id=cassa.id, camp_year=2026, camp_name="Reparto",
+            participants=1, quota_per_person=Decimal("3280"), max_budget=Decimal("3280"),
+            cash_initial=Decimal("0"), bank_initial=Decimal("3280"),
+        ),
+        Movement(
+            cassa_id=cassa.id, operation_date=camp_today(), type=MovementType.EXPENSE,
+            payment_method=PaymentMethod.CASH, supplier="Orso Scout", unit="Gruppo",
+            category="alloggio", amount=Decimal("600"), created_by=user.id,
+        ),
+    ])
+    db.flush()
+
+    dashboard = get_dashboard(db, cassa.id)
+
+    assert dashboard.cash_balance == Decimal("-600")
+    assert dashboard.bank_balance == Decimal("3280")
+    assert dashboard.spent == Decimal("0")
+    assert dashboard.remaining_budget == Decimal("3280")
+    assert all(row.spent == 0 for row in dashboard.category_summaries)
+    assert dashboard.today_movements == []
+    assert not dashboard.anomalies
 
 
 def test_camp_movement_can_be_attributed_to_group_without_changing_paying_cassa(

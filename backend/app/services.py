@@ -157,7 +157,7 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
         movement_type: MovementType,
         method: PaymentMethod | None = None,
         *,
-        camp_budget_only: bool = False,
+        own_unit_only: bool = False,
     ) -> Decimal:
         query = select(func.coalesce(func.sum(Movement.amount), 0)).where(
             Movement.type == movement_type,
@@ -166,11 +166,11 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
         )
         if method:
             query = query.where(Movement.payment_method == method)
-        if camp_budget_only and cassa.kind == CassaKind.CAMPO:
+        if own_unit_only:
             query = query.where(Movement.unit == cassa.unit)
         return Decimal(db.scalar(query) or 0)
 
-    spent = total(MovementType.EXPENSE, camp_budget_only=True)
+    spent = total(MovementType.EXPENSE, own_unit_only=True)
     max_budget = (
         Decimal(settings.participants) * settings.quota_per_person if settings else ZERO
     )
@@ -215,6 +215,7 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
             .where(
                 MovementReimbursement.reimbursed_at.is_(None),
                 Movement.cassa_id == cassa_id,
+                Movement.unit == cassa.unit,
                 Movement.deleted_at.is_(None),
             )
         )
@@ -231,6 +232,7 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
         .where(
             Movement.operation_date == camp_today(),
             Movement.cassa_id == cassa_id,
+            Movement.unit == cassa.unit,
             Movement.deleted_at.is_(None),
         )
         .order_by(Movement.created_at.desc())
@@ -253,8 +255,7 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
         Movement.deleted_at.is_(None),
         Movement.category.is_not(None),
     )
-    if cassa.kind == CassaKind.CAMPO:
-        category_query = category_query.where(Movement.unit == cassa.unit)
+    category_query = category_query.where(Movement.unit == cassa.unit)
     spent_by_category = {
         category: Decimal(amount or 0)
         for category, amount in db.execute(
@@ -271,6 +272,7 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
         .outerjoin(Movement.receipts)
         .where(
             Movement.cassa_id == cassa_id,
+            Movement.unit == cassa.unit,
             Movement.deleted_at.is_(None),
             Movement.type == MovementType.EXPENSE,
             MovementReceipt.id.is_(None),
@@ -281,8 +283,7 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
         Movement.deleted_at.is_(None),
         Movement.type == MovementType.EXPENSE,
     )
-    if cassa.kind == CassaKind.CAMPO:
-        high_expense_query = high_expense_query.where(Movement.unit == cassa.unit)
+    high_expense_query = high_expense_query.where(Movement.unit == cassa.unit)
     high_expense = db.scalar(high_expense_query)
     over_budget_categories = [
         category

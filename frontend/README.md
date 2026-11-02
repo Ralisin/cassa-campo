@@ -13,3 +13,9 @@ npm run dev
 
 Il frontend comunica esclusivamente con il backend configurato tramite
 `VITE_API_URL`.
+
+## Deploy
+
+Il sito statico su Render usa la cartella `frontend` del branch `main`.
+Un push che modifica questa cartella avvia automaticamente una build. L'app
+GitHub di Render deve avere accesso al repository `Ralisin/cassa-campo`.

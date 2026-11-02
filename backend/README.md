@@ -28,6 +28,12 @@ uvicorn app.main:app --reload
 
 Documentazione API: `http://localhost:8000/docs`.
 
+## Deploy
+
+Il servizio backend su Render usa la cartella `backend` del branch `main`.
+Un push che modifica questa cartella avvia automaticamente una build. L'app
+GitHub di Render deve avere accesso al repository `Ralisin/cassa-campo`.
+
 ## Notifiche push
 
 Le notifiche push della PWA richiedono le chiavi VAPID nel backend:

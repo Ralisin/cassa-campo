@@ -12,7 +12,7 @@ from app.routers.reimbursements import list_reimbursements, update_reimbursement
 from app.schemas import ReimbursementUpdate
 
 
-def reimbursable(cassa, user, supplier, amount):
+def reimbursable(cassa, user, supplier, amount, performer=None):
     return Movement(
         cassa_id=cassa.id,
         operation_date=date.today(),
@@ -24,6 +24,7 @@ def reimbursable(cassa, user, supplier, amount):
         amount=Decimal(amount),
         notes="Spesa",
         created_by=user.id,
+        performed_by_id=(performer or user).id,
         reimbursement=MovementReimbursement(),
     )
 
@@ -59,3 +60,23 @@ def test_users_see_only_their_reimbursements_and_operators_can_complete_them(
     assert cashier_summary.pending_amount == Decimal("20.50")
     assert completed.pending_amount == Decimal("8.00")
     assert completed.reimbursed_amount == Decimal("12.50")
+
+
+def test_reimbursement_belongs_to_person_who_paid_not_person_who_entered_it(
+    db, make_group, make_cassa, make_user, membership_of
+) -> None:
+    group = make_group()
+    cassa = make_cassa(group, "E/G")
+    admin = make_user(group, "admin@roma108.it", memberships=[(cassa, UserRole.ADMIN)])
+    payer = make_user(group, "payer@roma108.it", memberships=[(cassa, UserRole.USER)])
+    movement = reimbursable(cassa, admin, "Spesa anticipata", "15.00", payer)
+    db.add(movement)
+    db.flush()
+
+    payer_summary = list_reimbursements(db, membership_of(payer, cassa))
+    admin_summary = list_reimbursements(db, membership_of(admin, cassa))
+
+    assert payer_summary.pending_amount == Decimal("15.00")
+    assert [item.performed_by_name for item in payer_summary.movements] == [payer.name]
+    assert admin_summary.movements[0].creator_name == admin.name
+    assert admin_summary.movements[0].performed_by_name == payer.name

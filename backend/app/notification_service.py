@@ -35,9 +35,10 @@ def notify_admins_of_movement(
     )
     kind = "reimbursement_requested" if reimbursement_requested else "movement_created"
     title = "Nuovo rimborso da effettuare" if reimbursement_requested else "Nuovo movimento"
+    payer = db.get(User, movement.performed_by_id) if reimbursement_requested else None
     message = (
-        f"{creator.name} ha richiesto un rimborso di € {format_amount(movement.amount)} "
-        f"per {movement.supplier}."
+        f"Rimborso di € {format_amount(movement.amount)} per {movement.supplier} "
+        f"a favore di {(payer or creator).name}."
         if reimbursement_requested
         else f"{creator.name} ha aggiunto {movement.supplier} per € {format_amount(movement.amount)}."
     )
@@ -58,7 +59,7 @@ def notify_admins_of_movement(
 
 def notify_reimbursement_completed(db: Session, movement: Movement) -> None:
     notification = Notification(
-        user_id=movement.created_by,
+        user_id=movement.performed_by_id or movement.created_by,
         movement_id=movement.id,
         kind="reimbursement_completed",
         title="Rimborso effettuato",

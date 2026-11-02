@@ -10,7 +10,7 @@ import { useSessionStore } from '@/stores/session'
 const session = useSessionStore()
 const summary = ref(null)
 const statusFilter = ref('da_rimborsare')
-const creatorFilter = ref('tutti')
+const performerFilter = ref('tutti')
 const updating = ref(null)
 const actionError = ref('')
 const lastAction = ref(null)
@@ -20,20 +20,20 @@ const statuses = [
   { label: 'Rimborsati', value: 'rimborsato', icon: 'pi pi-check-circle' },
   { label: 'Tutti', value: 'tutti', icon: 'pi pi-list' },
 ]
-const creators = computed(() => [
+const performers = computed(() => [
   { label: 'Tutte le persone', value: 'tutti' },
   ...Array.from(
     new Map(
       (summary.value?.movements ?? []).map((movement) => [
-        movement.created_by,
-        { label: movement.creator_name, value: movement.created_by },
+        movement.performed_by_id,
+        { label: movement.performed_by_name, value: movement.performed_by_id },
       ]),
     ).values(),
   ).sort((a, b) => a.label.localeCompare(b.label, 'it')),
 ])
 const filtered = computed(() => (summary.value?.movements ?? []).filter((movement) => (
   (statusFilter.value === 'tutti' || movement.reimbursement_status === statusFilter.value)
-  && (creatorFilter.value === 'tutti' || movement.created_by === creatorFilter.value)
+  && (performerFilter.value === 'tutti' || movement.performed_by_id === performerFilter.value)
 )))
 
 async function load() {
@@ -117,7 +117,7 @@ usePolling(load)
         <div class="movement-filter-segments reimbursement-filter-segments">
           <PButton v-for="item in statuses" :key="item.value" :label="item.label" :icon="item.icon" size="small" class="movement-filter-segment reimbursement-filter-segment" :class="{ 'movement-filter-segment--active': statusFilter === item.value }" @click="statusFilter = item.value" />
         </div>
-        <PSelect v-if="session.isOperator" v-model="creatorFilter" :options="creators" option-label="label" option-value="value" class="mt-3" fluid />
+        <PSelect v-if="session.isOperator" v-model="performerFilter" :options="performers" option-label="label" option-value="value" class="mt-3" fluid />
       </template>
     </PCard>
 
@@ -129,7 +129,7 @@ usePolling(load)
 
     <section v-if="filtered.length" class="space-y-3">
       <article v-for="movement in filtered" :key="movement.id" class="reimbursement-list-item">
-        <MovementCard :movement="movement" />
+        <MovementCard :movement="movement" reimbursement />
         <p v-if="movement.reimbursed_at" class="reimbursement-list-item__meta text-xs text-slate-500">
           Rimborsato il {{ formatDateTime(movement.reimbursed_at) }}
           <span v-if="movement.reimbursed_by_name"> da {{ movement.reimbursed_by_name }}</span>

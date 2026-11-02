@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from decimal import Decimal
 
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload, selectinload
 
 from app.audit_service import write_audit
@@ -37,7 +37,9 @@ def list_reimbursements(db: DbSession, membership: CurrentMembership) -> Reimbur
         .order_by(Movement.operation_date.desc(), Movement.created_at.desc())
     )
     if membership.role not in (UserRole.ADMIN, UserRole.CASHIER):
-        query = query.where(Movement.created_by == membership.user_id)
+        query = query.where(
+            func.coalesce(Movement.performed_by_id, Movement.created_by) == membership.user_id
+        )
     movements = list(db.scalars(query).unique().all())
     pending = [movement for movement in movements if not movement.reimbursement.reimbursed_at]
     reimbursed = [movement for movement in movements if movement.reimbursement.reimbursed_at]
@@ -66,7 +68,11 @@ def update_reimbursement(
     was_reimbursed = movement.reimbursement.reimbursed_at is not None
     movement.reimbursement.reimbursed_at = datetime.now(UTC) if data.reimbursed else None
     movement.reimbursement.reimbursed_by = operator.user_id if data.reimbursed else None
-    if data.reimbursed and not was_reimbursed and movement.created_by != operator.user_id:
+    if (
+        data.reimbursed
+        and not was_reimbursed
+        and (movement.performed_by_id or movement.created_by) != operator.user_id
+    ):
         notify_reimbursement_completed(db, movement)
     write_audit(
         db,

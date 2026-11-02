@@ -10,7 +10,7 @@ import { useSessionStore } from '@/stores/session'
 const session = useSessionStore()
 const summary = ref(null)
 const statusFilter = ref('da_rimborsare')
-const creatorFilter = ref('tutti')
+const performerFilter = ref('tutti')
 const updating = ref(null)
 const actionError = ref('')
 const lastAction = ref(null)
@@ -23,20 +23,20 @@ const statuses = [
   { label: 'Rimborsati', value: 'rimborsato' },
   { label: 'Tutti', value: 'tutti' },
 ]
-const creators = computed(() => [
+const performers = computed(() => [
   { label: 'Tutte le persone', value: 'tutti' },
   ...Array.from(
     new Map(
       (summary.value?.movements ?? []).map((movement) => [
-        movement.created_by,
-        { label: movement.creator_name, value: movement.created_by },
+        movement.performed_by_id,
+        { label: movement.performed_by_name, value: movement.performed_by_id },
       ]),
     ).values(),
   ).sort((a, b) => a.label.localeCompare(b.label, 'it')),
 ])
 const filtered = computed(() => (summary.value?.movements ?? []).filter((movement) => (
   (statusFilter.value === 'tutti' || movement.reimbursement_status === statusFilter.value)
-  && (creatorFilter.value === 'tutti' || movement.created_by === creatorFilter.value)
+  && (performerFilter.value === 'tutti' || movement.performed_by_id === performerFilter.value)
 )))
 
 const kpis = computed(() => {
@@ -134,7 +134,7 @@ usePolling(load)
     <div class="dk-card dk-section">
       <div class="dk-toolbar">
         <PSelect v-model="statusFilter" :options="statuses" option-label="label" option-value="value" />
-        <PSelect v-if="session.isOperator" v-model="creatorFilter" :options="creators" option-label="label" option-value="value" filter />
+        <PSelect v-if="session.isOperator" v-model="performerFilter" :options="performers" option-label="label" option-value="value" filter />
         <span class="dk-toolbar__spacer text-sm text-slate-400">{{ filtered.length }} risultati</span>
       </div>
 
@@ -160,7 +160,7 @@ usePolling(load)
           </template>
         </PColumn>
         <PColumn header="Anticipato da">
-          <template #body="{ data }"><span class="dk-table__creator"><i class="pi pi-user" />{{ data.creator_name }}</span></template>
+          <template #body="{ data }"><span class="dk-table__creator"><i class="pi pi-user" />{{ data.performed_by_name }}</span></template>
         </PColumn>
         <PColumn header="Rimborsato il">
           <template #body="{ data }">

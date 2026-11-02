@@ -80,3 +80,35 @@ def test_reimbursement_notifications_reach_admin_cashier_and_requesting_user(
 
     mark_all_notifications_read(db, user_eg)
     assert list_notifications(db, user_eg).unread_count == 0
+
+
+def test_reimbursement_completed_notifies_the_person_who_paid(
+    db, make_group, make_cassa, make_user, membership_of
+) -> None:
+    group = make_group()
+    cassa = make_cassa(group, "E/G")
+    admin = make_user(group, "admin@roma108.it", memberships=[(cassa, UserRole.ADMIN)])
+    payer = make_user(group, "payer@roma108.it", memberships=[(cassa, UserRole.USER)])
+
+    movement = create_movement(
+        MovementInput(
+            operation_date=date.today(),
+            type=MovementType.EXPENSE,
+            payment_method=PaymentMethod.CASH,
+            supplier="Cartoleria",
+            category="varie",
+            amount=Decimal("15.00"),
+            notes="Materiale",
+            needs_reimbursement=True,
+            performed_by_id=payer.id,
+        ),
+        db,
+        membership_of(admin, cassa),
+    )
+
+    assert payer.name in list_notifications(db, membership_of(admin, cassa)).items[0].message
+
+    update_reimbursement(movement.id, ReimbursementUpdate(reimbursed=True), db, membership_of(admin, cassa))
+
+    assert list_notifications(db, membership_of(payer, cassa)).items[0].kind == "reimbursement_completed"
+    assert list_notifications(db, membership_of(admin, cassa)).unread_count == 0

@@ -1,6 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from io import BytesIO
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
@@ -126,6 +127,7 @@ def _movement_row(movement: Movement) -> dict:
         "unit": movement.unit,
         "balance_type": movement.balance_type.value,
         "notes": movement.notes,
+        "category": movement.category,
         "cash_in": cash_in,
         "cash_out": cash_out,
         "bank_in": bank_in,
@@ -345,6 +347,7 @@ def build_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
 
 
 def build_annual_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
+    settings = latest_settings(db, cassa.id)
     entries = [
         _movement_row(item)
         for item in db.scalars(
@@ -360,75 +363,125 @@ def build_annual_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
     workbook.calculation.fullCalcOnLoad = True
     workbook.calculation.forceFullCalc = True
     sheet = workbook.active
-    sheet.title = f"Cassa Anno {cassa.year}"
-    sheet.freeze_panes = "A5"
+    sheet.title = f"Bilancio {cassa.year - 1}-{cassa.year}"
+    sheet.freeze_panes = "A8"
     sheet.sheet_view.showGridLines = True
+    sheet.sheet_properties.pageSetUpPr.fitToPage = True
+    sheet.page_setup.orientation = "landscape"
+    sheet.page_setup.fitToWidth = 1
+    sheet.print_title_rows = "1:7"
 
-    headers = [
-        "N.°",
-        "Data reg.ne",
-        "Data oper.ne",
-        "Fornitore",
-        "Unità",
-        "Bilancio",
-        "Note",
-        "Entrate contanti",
-        "Uscite contanti",
-        "Entrate banca",
-        "Uscite banca",
-        "Saldo",
-    ]
-    widths = [6, 13, 13, 28, 10, 10, 38, 15, 15, 15, 15, 15]
-    for index, width in enumerate(widths, start=1):
-        sheet.column_dimensions[sheet.cell(1, index).column_letter].width = width
+    widths = {
+        "A": 7, "B": 13, "C": 13, "D": 28, "E": 10, "F": 10,
+        "G": 18, "H": 20, "I": 38, "J": 3, "K": 3,
+        "L": 14, "M": 14, "N": 15, "O": 14, "P": 14,
+        "Q": 15, "R": 16, "S": 14, "T": 12, "U": 18, "V": 12,
+    }
+    for column, width in widths.items():
+        sheet.column_dimensions[column].width = width
+    sheet.column_dimensions["J"].hidden = True
+    sheet.column_dimensions["K"].hidden = True
 
-    sheet.merge_cells("A1:L1")
-    sheet["A1"] = f"Cassa Anno {cassa.unit} {cassa.year}"
-    sheet["A1"].font = Font(bold=True, size=14)
-    sheet["A1"].alignment = Alignment(horizontal="center")
-    sheet["A2"] = "Aperta"
-    sheet["B2"] = cassa.opened_at
-    sheet["D2"] = "Chiusa"
-    sheet["E2"] = cassa.closed_at
-    for coordinate in ("B2", "E2"):
-        sheet[coordinate].number_format = DATE
+    sheet.merge_cells("E1:G1")
+    sheet["E1"] = cassa.group.name
+    sheet["E1"].font = Font(bold=True, size=12)
+    sheet["H1"] = f"Branca {cassa.unit}"
+    sheet["C2"] = f"{cassa.year - 1}-{cassa.year}"
+    sheet["D2"] = "Quote pagate"
+    sheet["D3"] = "Numero paganti"
+    sheet["E3"] = settings.participants if settings else None
+    sheet["L1"] = "Quota a ragazzo"
+    sheet["N1"] = float(settings.quota_per_person) if settings else None
+    sheet["N1"].number_format = EURO
+    for coordinate in ("D2", "D3", "L1"):
+        sheet[coordinate].font = Font(bold=True)
+    for coordinate in ("E2", "E3", "N1"):
+        sheet[coordinate].fill = PatternFill("solid", fgColor=YELLOW)
+        sheet[coordinate].font = Font(bold=True)
+        _apply_border(sheet[coordinate])
 
-    for column, value in enumerate(headers, start=1):
-        cell = sheet.cell(4, column)
-        cell.value = value
-        cell.fill = PatternFill("solid", fgColor=BLUE)
-        cell.font = Font(bold=True)
-        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        _apply_border(cell)
+    _merge_label(sheet, "L2:M2", "Spesa Massima")
+    sheet["N2"] = '=IF(OR(E2="",N1=""),"",E2*N1)'
+    _merge_label(sheet, "O2:P2", "Spesa Eseguita")
+    last_row = max(8, 7 + len(entries))
+    sheet["Q2"] = f"=-SUM(R8:R{last_row})"
+    _merge_label(sheet, "S2:T2", "Cassa residua")
+    sheet.merge_cells("S3:T4")
+    sheet["S3"] = '=IF(N2="","",N2-Q2)'
+    _merge_label(sheet, "U2:V2", "Cassa residua a ragazzo")
+    sheet.merge_cells("U3:V4")
+    sheet["U3"] = '=IF(OR(S3="",E3="",E3=0),"",S3/E3)'
+    for coordinate in ("N2", "Q2", "S3", "U3"):
+        sheet[coordinate].font = Font(bold=True, size=12)
+        sheet[coordinate].number_format = EURO
+        sheet[coordinate].alignment = Alignment(horizontal="center", vertical="center")
+        _apply_border(sheet[coordinate])
+
+    sheet["B4"] = datetime.now(ZoneInfo("Europe/Rome")).date()
+    sheet["B4"].number_format = DATE
+    sheet["B4"].font = Font(bold=True, italic=True)
+
+    for range_ref in ("E4:E7", "F4:F7", "G4:H6", "L4:N5", "O4:Q5"):
+        sheet.merge_cells(range_ref)
+    headers = {
+        "A6": "N.°", "B6": "Data reg.ne", "C5": "Data oper.ne",
+        "D6": "Fornitore", "E4": "Unità", "F4": "Bilancio",
+        "G4": "Operazione", "I6": "Note", "L4": "Cassa Contanti Branca",
+        "O4": "Cassa Banca Branca", "L6": "Entrate", "M6": "Uscite",
+        "N6": "Saldo", "O6": "Entrate", "P6": "Uscite",
+        "Q6": "Saldo", "R7": f"Parziale {cassa.unit.replace('/', '')}",
+    }
+    for coordinate, value in headers.items():
+        sheet[coordinate] = value
+    for row in sheet.iter_rows(min_row=4, max_row=7, min_col=1, max_col=18):
+        for cell in row:
+            if cell.column not in (10, 11):
+                cell.fill = PatternFill("solid", fgColor=BLUE)
+                cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+                _apply_border(cell)
+    sheet["N7"] = float(settings.cash_initial) if settings else 0
+    sheet["Q7"] = float(settings.bank_initial) if settings else 0
+    for coordinate in ("N7", "Q7"):
+        sheet[coordinate].fill = PatternFill("solid", fgColor=PALE_GREEN)
+        sheet[coordinate].number_format = EURO
+        sheet[coordinate].font = Font(bold=True)
+        _apply_border(sheet[coordinate])
 
     for index, entry in enumerate(entries, start=1):
-        row = index + 4
-        values = [
-            index,
-            entry["created_at"].date(),
-            entry["operation_date"],
-            entry["supplier"],
-            entry["unit"],
-            entry["balance_type"],
-            entry["notes"],
-            float(entry["cash_in"]) or None,
-            float(entry["cash_out"]) or None,
-            float(entry["bank_in"]) or None,
-            float(entry["bank_out"]) or None,
-        ]
-        for column, value in enumerate(values, start=1):
-            sheet.cell(row, column).value = value
-        sheet.cell(row, 12).value = f"=H{row}-I{row}+J{row}-K{row}"
-        for column in range(1, 13):
+        row = index + 7
+        unit = entry["unit"].replace("/", "").upper()
+        sheet[f"A{row}"] = index
+        sheet[f"B{row}"] = entry["created_at"].date()
+        sheet[f"C{row}"] = entry["operation_date"]
+        sheet[f"D{row}"] = entry["supplier"]
+        sheet[f"E{row}"] = "Gruppo" if unit == "GRUPPO" else unit
+        sheet[f"F{row}"] = entry["balance_type"]
+        sheet[f"G{row}"] = entry["category"].replace("_", " ").title() if entry["category"] else None
+        sheet[f"I{row}"] = entry["notes"]
+        for column, key in (("L", "cash_in"), ("M", "cash_out"),
+                            ("O", "bank_in"), ("P", "bank_out")):
+            sheet[f"{column}{row}"] = float(entry[key]) or None
+        previous = row - 1
+        sheet[f"N{row}"] = f"=N{previous}+L{row}-M{row}"
+        sheet[f"Q{row}"] = f"=Q{previous}+O{row}-P{row}"
+        sheet[f"R{row}"] = (
+            f'=IF(E{row}="{cassa.unit.replace("/", "").upper()}",'
+            f'L{row}-M{row}+O{row}-P{row},0)'
+        )
+        for column in range(1, 19):
             cell = sheet.cell(row, column)
-            _apply_border(cell, dotted=True)
+            if column not in (10, 11):
+                _apply_border(cell, dotted=True)
             if column in (2, 3):
                 cell.number_format = DATE
-            if column >= 8:
+            if column >= 12:
                 cell.number_format = EURO
-    last_row = max(5, 4 + len(entries))
-    sheet.auto_filter.ref = f"A4:L{last_row}"
-    sheet.print_area = f"A1:L{last_row}"
+        for column in ("N", "Q"):
+            sheet[f"{column}{row}"].fill = PatternFill("solid", fgColor=PALE_GREEN)
+    sheet.auto_filter.ref = f"A7:R{last_row}"
+    sheet.print_area = f"A1:V{last_row}"
+    _add_dropdown(sheet, f"E8:E{max(VALIDATION_LAST_ROW, last_row)}", ["LC", "EG", "RS", "COCA", "Gruppo"])
+    _add_dropdown(sheet, f"F8:F{max(VALIDATION_LAST_ROW, last_row)}", ["O", "C", "A"])
     _add_checks_sheet(workbook, db, cassa)
     return workbook
 

@@ -4,6 +4,7 @@ from decimal import Decimal
 from app.models import (
     BalanceType,
     CampSettings,
+    CassaKind,
     Movement,
     MovementType,
     PaymentMethod,
@@ -11,7 +12,7 @@ from app.models import (
     TreasuryTransfer,
     UserRole,
 )
-from app.routers.exports import build_excel_report
+from app.routers.exports import build_annual_excel_report, build_excel_report
 
 
 def test_excel_report_matches_camp_layout_and_includes_transfers(
@@ -91,4 +92,80 @@ def test_excel_report_matches_camp_layout_and_includes_transfers(
         for validation in sheet.data_validations.dataValidation
     }
     assert ('"L/C,E/G,R/S,CoCa,Gruppo"', "E8:E500") in validations
+    assert ('"O,C,A"', "F8:F500") in validations
+
+
+def test_annual_export_matches_reference_layout_and_keeps_units_separate(
+    db, make_group, make_cassa, make_user
+) -> None:
+    group = make_group()
+    cassa = make_cassa(group, "E/G")
+    cassa.kind = CassaKind.ANNO
+    cassa.year = 2027
+    db.flush()
+    admin = make_user(group, "admin@roma108.it", memberships=[(cassa, UserRole.ADMIN)])
+    db.add(
+        CampSettings(
+            cassa_id=cassa.id,
+            camp_year=2027,
+            camp_name="Anno scout",
+            participants=38,
+            quota_per_person=Decimal("80"),
+            max_budget=Decimal("3040"),
+            cash_initial=Decimal("100"),
+            bank_initial=Decimal("2940"),
+        )
+    )
+    for unit, method, amount, day in (
+        ("E/G", PaymentMethod.CASH, "12", 5),
+        ("L/C", PaymentMethod.CARD, "25", 6),
+    ):
+        db.add(
+            Movement(
+                cassa_id=cassa.id,
+                created_at=datetime(2026, 11, day, 10),
+                operation_date=date(2026, 11, day),
+                type=MovementType.EXPENSE,
+                payment_method=method,
+                supplier="Fornitore",
+                unit=unit,
+                balance_type=BalanceType.ORDINARY,
+                amount=Decimal(amount),
+                created_by=admin.id,
+            )
+        )
+    db.flush()
+
+    sheet = build_annual_excel_report(db, cassa).active
+
+    assert sheet.title == "Bilancio 2026-2027"
+    assert sheet["C2"].value == "2026-2027"
+    assert sheet["B4"].value is not None
+    assert sheet["B4"].number_format == "d/m/yyyy"
+    assert sheet["E2"].value is None  # Paid dues are not tracked yet.
+    assert sheet["E3"].value == 38
+    assert sheet["N1"].value == 80
+    assert sheet["N2"].value == '=IF(OR(E2="",N1=""),"",E2*N1)'
+    assert sheet["Q2"].value == "=-SUM(R8:R9)"
+    assert sheet["N7"].value == 100
+    assert sheet["Q7"].value == 2940
+    assert sheet["E8"].value == "EG"
+    assert sheet["F8"].value == "O"
+    assert sheet["M8"].value == 12
+    assert sheet["E9"].value == "LC"
+    assert sheet["P9"].value == 25
+    assert sheet["N8"].value == "=N7+L8-M8"
+    assert sheet["Q9"].value == "=Q8+O9-P9"
+    assert sheet["R8"].value == '=IF(E8="EG",L8-M8+O8-P8,0)'
+    assert sheet["R9"].value == '=IF(E9="EG",L9-M9+O9-P9,0)'
+    assert sheet.freeze_panes == "A8"
+    assert sheet.auto_filter.ref == "A7:R9"
+    assert {'E4:E7', 'F4:F7', 'L4:N5', 'O4:Q5', 'S3:T4', 'U3:V4'}.issubset(
+        {str(range_) for range_ in sheet.merged_cells.ranges}
+    )
+    validations = {
+        (validation.formula1, str(next(iter(validation.cells.ranges))))
+        for validation in sheet.data_validations.dataValidation
+    }
+    assert ('"LC,EG,RS,COCA,Gruppo"', "E8:E500") in validations
     assert ('"O,C,A"', "F8:F500") in validations

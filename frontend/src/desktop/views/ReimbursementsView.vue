@@ -5,6 +5,7 @@ import { api } from '@/api'
 import { usePolling } from '@/composables/usePolling'
 import KpiCard from '@/desktop/components/KpiCard.vue'
 import PageHeader from '@/desktop/components/PageHeader.vue'
+import { summarizeReimbursements } from '@/reimbursementTotals'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
@@ -38,13 +39,16 @@ const filtered = computed(() => (summary.value?.movements ?? []).filter((movemen
   (statusFilter.value === 'tutti' || movement.reimbursement_status === statusFilter.value)
   && (performerFilter.value === 'tutti' || movement.performed_by_id === performerFilter.value)
 )))
+const selectedPerformer = computed(() => performers.value.find((person) => person.value === performerFilter.value))
+const totals = computed(() => summarizeReimbursements(summary.value?.movements ?? [], performerFilter.value))
 
 const kpis = computed(() => {
-  const s = summary.value
-  if (!s) return []
+  if (!summary.value) return []
+  const s = totals.value
+  const person = performerFilter.value === 'tutti' ? '' : `${selectedPerformer.value?.label ?? ''} · `
   return [
-    { label: session.isOperator ? 'Da restituire' : 'Ti devono restituire', value: euro.format(Number(s.pending_amount)), icon: 'pi pi-clock', tone: 'amber', hint: `${s.pending_count} movimenti` },
-    { label: 'Già rimborsati', value: euro.format(Number(s.reimbursed_amount)), icon: 'pi pi-check-circle', tone: 'emerald', hint: `${s.reimbursed_count} movimenti` },
+    { label: session.isOperator ? 'Da restituire' : 'Ti devono restituire', value: euro.format(s.pendingAmount), icon: 'pi pi-clock', tone: 'amber', hint: `${person}${s.pendingCount} movimenti` },
+    { label: 'Già rimborsati', value: euro.format(s.reimbursedAmount), icon: 'pi pi-check-circle', tone: 'emerald', hint: `${person}${s.reimbursedCount} movimenti` },
   ]
 })
 

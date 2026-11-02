@@ -5,6 +5,7 @@ import { api } from '@/api'
 import MovementCard from '@/_UI/components/MovementCard.vue'
 import MovementCardSkeleton from '@/_UI/components/MovementCardSkeleton.vue'
 import { usePolling } from '@/composables/usePolling'
+import { summarizeReimbursements } from '@/reimbursementTotals'
 import { useSessionStore } from '@/stores/session'
 
 const session = useSessionStore()
@@ -35,6 +36,9 @@ const filtered = computed(() => (summary.value?.movements ?? []).filter((movemen
   (statusFilter.value === 'tutti' || movement.reimbursement_status === statusFilter.value)
   && (performerFilter.value === 'tutti' || movement.performed_by_id === performerFilter.value)
 )))
+const selectedPerformer = computed(() => performers.value.find((person) => person.value === performerFilter.value))
+const totals = computed(() => summarizeReimbursements(summary.value?.movements ?? [], performerFilter.value))
+const personHint = computed(() => performerFilter.value === 'tutti' ? '' : `${selectedPerformer.value?.label ?? ''} · `)
 
 async function load() {
   summary.value = await api.get('/reimbursements')
@@ -98,16 +102,16 @@ usePolling(load)
         <template #content>
           <PAvatar icon="pi pi-clock" shape="circle" class="!bg-amber-100 !text-amber-700" />
           <p class="mt-3 text-[11px] font-black uppercase tracking-wider text-slate-500">{{ session.isOperator ? 'Da restituire' : 'Ti devono restituire' }}</p>
-          <p class="mt-1 text-xl font-black text-amber-700">{{ euro.format(Number(summary.pending_amount)) }}</p>
-          <p class="mt-1 text-xs text-slate-500">{{ summary.pending_count }} movimenti</p>
+          <p class="mt-1 text-xl font-black text-amber-700">{{ euro.format(totals.pendingAmount) }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ personHint }}{{ totals.pendingCount }} movimenti</p>
         </template>
       </PCard>
       <PCard class="reimbursement-summary-card">
         <template #content>
           <PAvatar icon="pi pi-check-circle" shape="circle" class="!bg-emerald-50 !text-emerald-700" />
           <p class="mt-3 text-[11px] font-black uppercase tracking-wider text-slate-500">Già rimborsati</p>
-          <p class="mt-1 text-xl font-black text-emerald-700">{{ euro.format(Number(summary.reimbursed_amount)) }}</p>
-          <p class="mt-1 text-xs text-slate-500">{{ summary.reimbursed_count }} movimenti</p>
+          <p class="mt-1 text-xl font-black text-emerald-700">{{ euro.format(totals.reimbursedAmount) }}</p>
+          <p class="mt-1 text-xs text-slate-500">{{ personHint }}{{ totals.reimbursedCount }} movimenti</p>
         </template>
       </PCard>
     </section>

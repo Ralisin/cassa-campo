@@ -9,11 +9,13 @@ from sqlalchemy import (
     DateTime,
     Enum,
     ForeignKey,
+    Index,
     Numeric,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -38,6 +40,7 @@ class MovementType(str, enum.Enum):
 class PaymentMethod(str, enum.Enum):
     CASH = "contanti"
     CARD = "carta"
+    BANK = "bonifico"
 
 
 class BalanceType(str, enum.Enum):
@@ -155,6 +158,7 @@ class CampSettings(Base):
     max_budget: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
     cash_initial: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
     bank_initial: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
+    annual_balances_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     category_budgets: Mapped[list["CampCategoryBudget"]] = relationship(
@@ -191,6 +195,14 @@ class CampCategoryBudget(Base):
 
 class Movement(Base):
     __tablename__ = "movements"
+    __table_args__ = (
+        Index(
+            "uq_movements_active_annual_dues_person",
+            "cassa_id", "annual_dues_person_key", unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     cassa_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("casse.id", ondelete="CASCADE"), index=True)
@@ -206,6 +218,8 @@ class Movement(Base):
     category: Mapped[str | None] = mapped_column(ForeignKey("expense_categories.slug"))
     amount: Mapped[Decimal] = mapped_column(Numeric(10, 2))
     notes: Mapped[str | None] = mapped_column(Text)
+    annual_dues_person: Mapped[str | None] = mapped_column(String(255))
+    annual_dues_person_key: Mapped[str | None] = mapped_column(String(255))
     created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
     performed_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)

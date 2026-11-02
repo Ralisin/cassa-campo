@@ -142,10 +142,10 @@ def test_annual_export_matches_reference_layout_and_keeps_units_separate(
     assert sheet["C2"].value == "2026-2027"
     assert sheet["B4"].value is not None
     assert sheet["B4"].number_format == "d/m/yyyy"
-    assert sheet["E2"].value is None  # Paid dues are not tracked yet.
+    assert sheet["E2"].value == 0
     assert sheet["E3"].value == 38
     assert sheet["N1"].value == 80
-    assert sheet["N2"].value == '=IF(OR(E2="",N1=""),"",E2*N1)'
+    assert sheet["N2"].value == '=IF(OR(E3="",N1=""),"",E3*N1)'
     assert sheet["Q2"].value == "=-SUM(R8:R9)"
     assert sheet["N7"].value == 100
     assert sheet["Q7"].value == 2940

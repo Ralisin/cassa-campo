@@ -84,6 +84,7 @@ const allNavItems = computed(() => {
     { label: 'Home', icon: 'pi pi-home', to: '/', key: 'home' },
     { label: 'Inserisci', icon: 'pi pi-plus', to: '/movimenti/nuovo', key: 'new' },
     { label: 'Movimenti', icon: 'pi pi-list', to: '/movimenti', key: 'movements' },
+    ...(session.activeCassa?.kind === 'anno' ? [{ label: 'Quote anno', icon: 'pi pi-users', to: '/quote-anno', key: 'annual-dues' }] : []),
     { label: 'Rimborsi', icon: 'pi pi-replay', to: '/rimborsi', key: 'reimbursements' },
     { label: 'Riepilogo', icon: 'pi pi-chart-pie', to: '/riepilogo', key: 'summary' },
     ...(session.isOperator ? [{ label: 'Audit', icon: 'pi pi-history', to: '/audit', key: 'audit' }] : []),

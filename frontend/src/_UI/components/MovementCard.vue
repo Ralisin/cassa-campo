@@ -19,7 +19,7 @@ const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR'
       <template #content>
         <div class="movement-card-layout">
           <PAvatar
-            :icon="movement.payment_method === 'carta' ? 'pi pi-credit-card' : 'pi pi-wallet'"
+            :icon="movement.payment_method === 'contanti' ? 'pi pi-wallet' : 'pi pi-credit-card'"
             size="large"
             shape="circle"
             class="movement-card-avatar"

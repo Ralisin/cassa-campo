@@ -29,6 +29,7 @@ const DSettingsView = () => import('@/desktop/views/SettingsView.vue')
 const DUsersView = () => import('@/desktop/views/UsersView.vue')
 const DReimbursementsView = () => import('@/desktop/views/ReimbursementsView.vue')
 const DSystemAdminView = () => import('@/desktop/views/SystemAdminView.vue')
+const AnnualDuesView = () => import('@/components/AnnualDuesView.vue')
 
 const router = createRouter({
   history: createWebHistory(),
@@ -39,6 +40,7 @@ const router = createRouter({
     { path: '/system', components: { default: SystemAdminView, desktop: DSystemAdminView }, meta: { title: 'Sistema', nav: 'system', system: true } },
     { path: '/', components: { default: DashboardView, desktop: DDashboardView }, meta: { title: 'Campo 2026 · Reparto', nav: 'home' } },
     { path: '/movimenti', components: { default: MovementsView, desktop: DMovementsView }, meta: { title: 'Movimenti', nav: 'movements' } },
+    { path: '/quote-anno', components: { default: AnnualDuesView, desktop: AnnualDuesView }, meta: { title: 'Quote anno', nav: 'annual-dues', annual: true } },
     { path: '/movimenti/nuovo', components: { default: MovementFormView, desktop: DMovementFormView }, meta: { title: 'Nuovo movimento', nav: 'new', back: true, writable: true } },
     { path: '/movimenti/:id', components: { default: MovementDetailView, desktop: DMovementDetailView }, meta: { title: 'Dettaglio movimento', nav: 'movements', back: true } },
     { path: '/movimenti/:id/modifica', components: { default: MovementFormView, desktop: DMovementFormView }, meta: { title: 'Modifica movimento', nav: 'movements', back: true, writable: true } },
@@ -75,6 +77,7 @@ router.beforeEach(async (to) => {
   if (to.meta.writable && session.cassaClosed) return '/'
   if (to.meta.admin && !session.isAdmin) return '/'
   if (to.meta.operator && !session.isOperator) return '/'
+  if (to.meta.annual && session.activeCassa?.kind !== 'anno') return '/'
   return true
 })
 

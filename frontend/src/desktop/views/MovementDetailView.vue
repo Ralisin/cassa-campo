@@ -29,6 +29,7 @@ const rows = computed(() => {
     ['pi pi-book', 'Bilancio', m.balance_type],
     ['pi pi-tag', 'Categoria', m.category || '—'],
     ['pi pi-building', 'Fornitore', m.supplier],
+    ...(m.annual_dues_person ? [['pi pi-users', 'Quota anno per', m.annual_dues_person]] : []),
     ['pi pi-file-edit', 'Note', m.notes || '—'],
     ['pi pi-user', 'Inserito da', m.creator_name],
     ...(m.type === 'uscita' ? [['pi pi-shopping-bag', 'Spesa fatta da', m.performed_by_name]] : []),
@@ -125,7 +126,7 @@ function formatBytes(bytes) {
       <div class="dk-card">
         <div class="flex items-center gap-4 border-b border-slate-100 pb-5">
           <span class="dk-mv__avatar" :class="movement.type === 'uscita' ? 'dk-mv__avatar--out' : 'dk-mv__avatar--in'" style="width: 3.4rem; height: 3.4rem; font-size: 1.2rem; border-radius: 0.9rem">
-            <i :class="movement.payment_method === 'carta' ? 'pi pi-credit-card' : 'pi pi-wallet'" />
+            <i :class="movement.payment_method === 'contanti' ? 'pi pi-wallet' : 'pi pi-credit-card'" />
           </span>
           <div class="min-w-0 flex-1">
             <h2 class="truncate text-xl font-black">{{ movement.supplier }}</h2>

@@ -33,6 +33,7 @@ const methods = [
   { label: 'Tutti', value: 'tutti', icon: 'pi pi-th-large' },
   { label: 'Contanti', value: 'contanti', icon: 'pi pi-wallet' },
   { label: 'Carta', value: 'carta', icon: 'pi pi-credit-card' },
+  { label: 'Bonifico', value: 'bonifico', icon: 'pi pi-building-columns' },
 ]
 const reimbursementFilters = [
   { label: 'Tutti', value: 'tutti' },

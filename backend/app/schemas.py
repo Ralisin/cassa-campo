@@ -138,6 +138,7 @@ class MovementInput(BaseModel):
     notes: str = Field(min_length=1)
     needs_reimbursement: bool = False
     performed_by_id: uuid.UUID | None = None
+    annual_dues_person: str | None = Field(default=None, max_length=255)
 
     @model_validator(mode="after")
     def validate_reimbursement(self) -> "MovementInput":
@@ -149,6 +150,12 @@ class MovementInput(BaseModel):
             self.type != MovementType.EXPENSE or self.payment_method != PaymentMethod.CASH
         ):
             raise ValueError("A reimbursement requires a cash expense")
+        if self.annual_dues_person is not None:
+            self.annual_dues_person = " ".join(self.annual_dues_person.split())
+            if not self.annual_dues_person:
+                raise ValueError("Il nome del ragazzo è obbligatorio")
+            if self.type != MovementType.INCOME or self.payment_method not in (PaymentMethod.CASH, PaymentMethod.BANK):
+                raise ValueError("La quota anno richiede un'entrata in contanti o con bonifico")
         return self
 
 
@@ -174,6 +181,7 @@ class MovementRead(ApiModel):
     category: str | None
     amount: Decimal
     notes: str | None
+    annual_dues_person: str | None
     created_by: uuid.UUID
     creator_name: str
     creator_email: EmailStr
@@ -274,12 +282,12 @@ class SettingsInput(BaseModel):
     participants: int = Field(ge=0)
     quota_per_person: Decimal = Field(ge=0)
     cash_initial: Decimal = Field(ge=0)
+    bank_initial: Decimal | None = Field(default=None, ge=0)
+    confirm_annual_balances: bool = False
     category_budgets: dict[ExpenseCategorySlug, Decimal] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_cash_initial(self) -> "SettingsInput":
-        if self.cash_initial > self.participants * self.quota_per_person:
-            raise ValueError("Initial cash cannot exceed the camp budget")
         if any(amount < 0 for amount in self.category_budgets.values()):
             raise ValueError("Category budgets cannot be negative")
         return self
@@ -294,6 +302,7 @@ class SettingsRead(ApiModel):
     max_budget: Decimal
     cash_initial: Decimal
     bank_initial: Decimal
+    annual_balances_confirmed: bool
     category_budgets: dict[str, Decimal]
 
 

@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.audit_service import write_audit
 from app.dependencies import CurrentCassa, DbSession, WritableOperatorMembership
-from app.models import CampCategoryBudget, CampSettings, CassaKind, ExpenseCategory
+from app.models import CampCategoryBudget, CampSettings, CassaKind, ExpenseCategory, Movement
 from app.schemas import SettingsInput, SettingsRead
 
 router = APIRouter(prefix="/settings", tags=["settings"])
@@ -40,11 +40,34 @@ def get_settings(db: DbSession, cassa: CurrentCassa) -> SettingsRead:
 def update_settings(
     data: SettingsInput, db: DbSession, operator: WritableOperatorMembership
 ) -> SettingsRead:
-    settings = latest_settings(db, operator.cassa_id) or CampSettings(cassa_id=operator.cassa_id)
-    for field, value in data.model_dump(exclude={"category_budgets"}).items():
+    if operator.cassa.kind == CassaKind.CAMPO and data.cash_initial > data.participants * data.quota_per_person:
+        raise HTTPException(status_code=422, detail="Initial cash cannot exceed the camp budget")
+    settings = (
+        db.scalar(select(CampSettings).where(CampSettings.cassa_id == operator.cassa_id)
+                  .order_by(CampSettings.created_at.desc()).limit(1).with_for_update())
+        if operator.cassa.kind == CassaKind.ANNO else latest_settings(db, operator.cassa_id)
+    ) or CampSettings(cassa_id=operator.cassa_id)
+    if operator.cassa.kind == CassaKind.ANNO:
+        paid = db.scalar(select(func.count(Movement.id)).where(
+            Movement.cassa_id == operator.cassa_id,
+            Movement.annual_dues_person_key.is_not(None),
+            Movement.deleted_at.is_(None),
+        )) or 0
+        if data.participants < paid:
+            raise HTTPException(status_code=422, detail="I ragazzi registrati non possono essere meno delle quote pagate")
+        if paid and settings.quota_per_person != data.quota_per_person:
+            raise HTTPException(status_code=422, detail="La quota per ragazzo non può cambiare dopo i pagamenti")
+    for field, value in data.model_dump(exclude={"category_budgets", "bank_initial", "confirm_annual_balances"}).items():
         setattr(settings, field, value)
     settings.max_budget = data.participants * data.quota_per_person
-    settings.bank_initial = settings.max_budget - data.cash_initial
+    if operator.cassa.kind == CassaKind.ANNO:
+        settings.bank_initial = data.bank_initial if data.bank_initial is not None else (settings.bank_initial or 0)
+        if data.confirm_annual_balances:
+            if data.bank_initial is None:
+                raise HTTPException(status_code=422, detail="Inserisci il saldo iniziale della banca")
+            settings.annual_balances_confirmed = True
+    else:
+        settings.bank_initial = settings.max_budget - data.cash_initial
     db.add(settings)
     db.flush()
     if operator.cassa.kind == CassaKind.ANNO:

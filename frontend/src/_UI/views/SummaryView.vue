@@ -23,6 +23,7 @@ const transfers = ref([])
 const editingTransferId = ref(null)
 const session = useSessionStore()
 const isAnnual = computed(() => session.activeCassa?.kind === 'anno')
+const confirmAnnualBalances = ref(false)
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 const settings = reactive({
   camp_year: session.activeCassa?.year ?? new Date().getFullYear(),
@@ -30,6 +31,8 @@ const settings = reactive({
   participants: 0,
   quota_per_person: 0,
   cash_initial: 0,
+  bank_initial: 0,
+  annual_balances_confirmed: false,
   category_budgets: {
     vitto: 0,
     alloggio: 0,
@@ -129,9 +132,14 @@ async function saveInitialBalances() {
     settingsError.value = 'Inserisci due anni consecutivi, per esempio 2026 e 2027.'
     return
   }
+  if (isAnnual.value && !settings.annual_balances_confirmed && !confirmAnnualBalances.value) {
+    settingsError.value = 'Verifica i saldi iniziali e confermali prima di salvare.'
+    return
+  }
   savingSettings.value = true
   try {
-    await api.put('/settings', settings)
+    Object.assign(settings, await api.put('/settings', { ...settings, confirm_annual_balances: confirmAnnualBalances.value }))
+    confirmAnnualBalances.value = false
     await loadDashboard()
     settingsDialog.value = false
   } catch (cause) {
@@ -466,12 +474,12 @@ usePolling(loadSummary)
             <span class="summary-settings-section__icon"><i class="pi pi-wallet" /></span>
             <div>
               <strong>Partecipanti e saldi iniziali</strong>
-              <p>La disponibilità su carta viene calcolata automaticamente.</p>
+              <p>{{ isAnnual ? 'Inserisci i saldi realmente presenti all’apertura.' : 'La disponibilità su carta viene calcolata automaticamente.' }}</p>
             </div>
           </div>
           <div class="summary-settings-grid summary-settings-grid--participants">
             <div class="summary-dialog__field">
-              <label for="participants">Numero paganti</label>
+              <label for="participants">{{ isAnnual ? 'Ragazzi registrati' : 'Numero paganti' }}</label>
               <PInputNumber id="participants" v-model="settings.participants" :min="0" :use-grouping="false" fluid />
             </div>
           </div>
@@ -482,9 +490,17 @@ usePolling(loadSummary)
             </div>
             <div class="summary-dialog__field">
               <label for="cash-initial">Contanti iniziali</label>
-              <PInputNumber id="cash-initial" v-model="settings.cash_initial" mode="currency" currency="EUR" locale="it-IT" :min="0" :max="calculatedBudget" fluid />
+              <PInputNumber id="cash-initial" v-model="settings.cash_initial" mode="currency" currency="EUR" locale="it-IT" :min="0" :max="isAnnual ? undefined : calculatedBudget" fluid />
+            </div>
+            <div v-if="isAnnual" class="summary-dialog__field">
+              <label for="bank-initial">Banca iniziale</label>
+              <PInputNumber id="bank-initial" v-model="settings.bank_initial" mode="currency" currency="EUR" locale="it-IT" :min="0" fluid />
             </div>
           </div>
+          <label v-if="isAnnual && !settings.annual_balances_confirmed" class="flex items-start gap-2 text-sm text-slate-700">
+            <input v-model="confirmAnnualBalances" type="checkbox" class="mt-1 accent-emerald-700">
+            Ho verificato che i saldi iniziali contengano solo denaro già disponibile. Le quote che registro da ora saranno nuove entrate.
+          </label>
         </section>
 
         <section v-if="!isAnnual" class="summary-settings-section">
@@ -509,8 +525,8 @@ usePolling(loadSummary)
             <strong>{{ euro.format(calculatedBudget) }}</strong>
           </div>
           <div class="summary-settings-total">
-            <span>Carta iniziale</span>
-            <strong>{{ euro.format(calculatedBankInitial) }}</strong>
+            <span>{{ isAnnual ? 'Banca iniziale' : 'Carta iniziale' }}</span>
+            <strong>{{ euro.format(isAnnual ? Number(settings.bank_initial) : calculatedBankInitial) }}</strong>
           </div>
         </div>
         <PMessage v-if="settingsError" severity="error" size="small">{{ settingsError }}</PMessage>

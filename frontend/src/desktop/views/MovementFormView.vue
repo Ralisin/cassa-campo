@@ -19,6 +19,9 @@ const submitted = ref(false)
 const receiptInput = ref(null)
 const selectedReceipts = ref([])
 const users = ref([])
+const duesMode = ref(false)
+const annualQuota = ref(0)
+const isAnnual = computed(() => session.activeCassa?.kind === 'anno')
 const balanceTypes = [
   { label: 'Campo', value: 'C' },
   { label: 'Ordinario', value: 'O' },
@@ -47,7 +50,10 @@ const movementTypes = [
   { label: 'Entrata', value: 'entrata', icon: 'pi pi-arrow-down-left' },
   { label: 'Uscita', value: 'uscita', icon: 'pi pi-arrow-up-right' },
 ]
-const paymentMethods = computed(() => [
+const paymentMethods = computed(() => duesMode.value ? [
+  { label: 'Contanti', value: 'contanti', icon: 'pi pi-wallet' },
+  { label: 'Bonifico', value: 'bonifico', icon: 'pi pi-building-columns' },
+] : [
   { label: 'Contanti', value: 'contanti', icon: 'pi pi-wallet' },
   { label: 'Carta', value: 'carta', icon: 'pi pi-credit-card', disabled: form.needs_reimbursement },
 ])
@@ -76,6 +82,7 @@ const form = reactive({
   notes: '',
   needs_reimbursement: false,
   performed_by_id: session.user?.id ?? null,
+  annual_dues_person: null,
 })
 watch(() => form.unit, () => {
   if (session.isAdmin && !performerOptions.value.some((option) => option.value === form.performed_by_id)) {
@@ -83,9 +90,10 @@ watch(() => form.unit, () => {
   }
 })
 const amountInvalid = computed(() => submitted.value && (!Number.isFinite(Number(form.amount)) || Number(form.amount) <= 0))
-const supplierInvalid = computed(() => submitted.value && !form.supplier.trim())
+const supplierInvalid = computed(() => submitted.value && !duesMode.value && !form.supplier.trim())
+const personInvalid = computed(() => submitted.value && duesMode.value && !form.annual_dues_person?.trim())
 const dateInvalid = computed(() => submitted.value && !form.operation_date)
-const notesInvalid = computed(() => submitted.value && !form.notes?.trim())
+const notesInvalid = computed(() => submitted.value && !duesMode.value && !form.notes?.trim())
 const categoryInvalid = computed(() => submitted.value && form.type === 'uscita' && !form.category)
 const receiptSummary = computed(() => selectedReceipts.value.reduce((sum, file) => sum + file.size, 0))
 
@@ -108,10 +116,24 @@ watch(
   () => form.type,
   (value, previous) => {
     if (!value) form.type = previous || 'uscita'
+    if (value !== 'entrata') duesMode.value = false
     if (value === 'entrata') form.category = null
     else if (!form.category) form.category = 'varie'
   },
 )
+watch(duesMode, (enabled) => {
+  if (enabled && !form.annual_dues_person) {
+    form.type = 'entrata'
+    form.payment_method = 'contanti'
+    form.amount = annualQuota.value
+    form.unit = session.activeCassa?.unit ?? form.unit
+    form.balance_type = 'O'
+    form.needs_reimbursement = false
+  } else if (!enabled) {
+    form.annual_dues_person = null
+    if (form.payment_method === 'bonifico') form.payment_method = 'contanti'
+  }
+})
 watch(
   () => form.payment_method,
   (value, previous) => {
@@ -123,8 +145,15 @@ onMounted(async () => {
   if (!session.user) await session.loadUser()
   form.performed_by_id = session.user?.id ?? null
   if (session.isAdmin) users.value = await api.get('/users')
+  if (isAnnual.value) {
+    try { annualQuota.value = Number((await api.get('/settings')).quota_per_person) } catch { annualQuota.value = 0 }
+  }
   if (!editing.value) {
     form.unit = session.activeCassa?.unit ?? ''
+    if (isAnnual.value && route.query.annual_dues === '1') {
+      form.type = 'entrata'
+      duesMode.value = true
+    }
     return
   }
   try {
@@ -134,6 +163,7 @@ onMounted(async () => {
       return
     }
     Object.assign(form, movement, { amount: Number(movement.amount) })
+    duesMode.value = !!movement.annual_dues_person
   } finally {
     loading.value = false
   }
@@ -143,11 +173,17 @@ async function submit() {
   submitted.value = true
   error.value = ''
   offlineNotice.value = ''
-  if (amountInvalid.value || supplierInvalid.value || dateInvalid.value || notesInvalid.value || categoryInvalid.value) {
+  if (amountInvalid.value || supplierInvalid.value || personInvalid.value || dateInvalid.value || notesInvalid.value || categoryInvalid.value) {
     return
   }
   saving.value = true
   const payload = { ...form }
+  if (duesMode.value) {
+    payload.annual_dues_person = form.annual_dues_person.trim()
+    payload.supplier = `Quota anno · ${payload.annual_dues_person}`
+    payload.notes = `Pagamento quota anno per ${payload.annual_dues_person}`
+    payload.balance_type = 'O'
+  } else payload.annual_dues_person = null
   if (!session.isAdmin) delete payload.performed_by_id
   try {
     let saved
@@ -227,23 +263,28 @@ function formatBytes(bytes) {
             <PDatePicker id="date" v-model="operationDate" date-format="dd/mm/yy" show-icon icon-display="input" :manual-input="false" :invalid="dateInvalid" fluid />
             <small v-if="dateInvalid" class="dk-field__error">La data operazione è obbligatoria.</small>
           </div>
-          <div class="dk-field">
+          <div v-if="!duesMode" class="dk-field">
             <label for="supplier">Fornitore <span class="required-mark">*</span></label>
             <PInputText id="supplier" v-model="form.supplier" :invalid="supplierInvalid" placeholder="Es. Esselunga" fluid />
             <small v-if="supplierInvalid" class="dk-field__error">Il fornitore è obbligatorio.</small>
+          </div>
+          <div v-else class="dk-field">
+            <label for="dues-person">Ragazzo/a <span class="required-mark">*</span></label>
+            <PInputText id="dues-person" v-model="form.annual_dues_person" :invalid="personInvalid" placeholder="Nome e cognome" fluid />
+            <small v-if="personInvalid" class="dk-field__error">Inserisci il nome del ragazzo o della ragazza.</small>
           </div>
         </div>
         <div class="dk-field-row">
           <div class="dk-field">
             <label for="unit">Unità</label>
-            <PSelect v-if="canChooseUnit" id="unit" v-model="form.unit" :options="unitOptions" fluid />
+            <PSelect v-if="canChooseUnit" id="unit" v-model="form.unit" :options="unitOptions" :disabled="duesMode" fluid />
             <PInputText v-else id="unit" v-model="form.unit" disabled fluid />
             <small v-if="session.activeCassa?.kind === 'campo'" class="dk-field__hint">Scegli Gruppo per una spesa pagata da questa cassa ma attribuita al gruppo.</small>
             <small v-if="!canChooseUnit" class="dk-field__hint">Definita dalla cassa attiva.</small>
           </div>
           <div class="dk-field">
             <label for="balance-type">Bilancio</label>
-            <PSelect id="balance-type" v-model="form.balance_type" :options="balanceTypes" option-label="label" option-value="value" fluid />
+            <PSelect id="balance-type" v-model="form.balance_type" :options="balanceTypes" option-label="label" option-value="value" :disabled="duesMode" fluid />
           </div>
         </div>
         <div v-if="session.isAdmin && form.type === 'uscita'" class="dk-field-row">
@@ -260,11 +301,11 @@ function formatBytes(bytes) {
           </div>
           <div class="dk-field">
             <label for="amount">Importo <span class="required-mark">*</span></label>
-            <PInputNumber id="amount" v-model="form.amount" mode="currency" currency="EUR" locale="it-IT" :min="0.01" :invalid="amountInvalid" fluid />
+            <PInputNumber id="amount" v-model="form.amount" mode="currency" currency="EUR" locale="it-IT" :min="0.01" :disabled="duesMode" :invalid="amountInvalid" fluid />
             <small v-if="amountInvalid" class="dk-field__error">Inserisci un importo maggiore di zero.</small>
           </div>
         </div>
-        <div class="dk-field">
+        <div v-if="!duesMode" class="dk-field">
           <label for="notes">Note <span class="required-mark">*</span></label>
           <PTextarea id="notes" v-model="form.notes" rows="3" :invalid="notesInvalid" placeholder="Descrivi il movimento…" fluid />
           <small v-if="notesInvalid" class="dk-field__error">Le note sono obbligatorie.</small>
@@ -290,6 +331,13 @@ function formatBytes(bytes) {
               />
             </div>
           </div>
+          <div v-if="isAnnual && form.type === 'entrata'" class="dk-field">
+            <label>Causale entrata</label>
+            <div class="exclusive-button-group">
+              <PButton label="Entrata ordinaria" :aria-pressed="!duesMode" class="exclusive-button" :class="{ 'exclusive-button--selected': !duesMode }" @click="duesMode = false" />
+              <PButton label="Pagamento quota anno" :aria-pressed="duesMode" class="exclusive-button" :class="{ 'exclusive-button--selected': duesMode }" @click="duesMode = true" />
+            </div>
+          </div>
           <div class="dk-field">
             <label>Metodo di pagamento</label>
             <div class="exclusive-button-group" role="radiogroup">
@@ -306,7 +354,7 @@ function formatBytes(bytes) {
               />
             </div>
           </div>
-          <label class="reimbursement-option mt-1" :class="{ 'reimbursement-option--active': form.needs_reimbursement }" for="reimbursement">
+          <label v-if="!duesMode" class="reimbursement-option mt-1" :class="{ 'reimbursement-option--active': form.needs_reimbursement }" for="reimbursement">
             <PAvatar icon="pi pi-replay" shape="circle" class="reimbursement-option__icon" />
             <span class="min-w-0 flex-1">
               <strong class="block text-sm text-forest">Da rimborsare</strong>

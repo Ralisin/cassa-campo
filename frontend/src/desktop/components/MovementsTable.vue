@@ -79,7 +79,7 @@ function onRowClick(event) {
         </div>
         <div v-else class="dk-mv">
           <span class="dk-mv__avatar" :class="data.type === 'uscita' ? 'dk-mv__avatar--out' : 'dk-mv__avatar--in'">
-            <i :class="data.payment_method === 'carta' ? 'pi pi-credit-card' : 'pi pi-wallet'" />
+            <i :class="data.payment_method === 'contanti' ? 'pi pi-wallet' : 'pi pi-credit-card'" />
           </span>
           <div class="min-w-0">
             <span class="dk-mv__name">{{ data.supplier }}</span>
@@ -108,7 +108,7 @@ function onRowClick(event) {
       <template #body="{ data }">
         <Skel v-if="data.__skel" w="4.5rem" h="0.8rem" />
         <span v-else class="dk-method">
-          <i :class="data.payment_method === 'carta' ? 'pi pi-credit-card' : 'pi pi-wallet'" />
+          <i :class="data.payment_method === 'contanti' ? 'pi pi-wallet' : 'pi pi-credit-card'" />
           <span class="capitalize">{{ data.payment_method }}</span>
         </span>
       </template>

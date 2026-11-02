@@ -348,12 +348,18 @@ def build_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
 
 def build_annual_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
     settings = latest_settings(db, cassa.id)
+    paid_count = db.scalar(select(func.count(Movement.id)).where(
+        Movement.cassa_id == cassa.id,
+        Movement.annual_dues_person_key.is_not(None),
+        Movement.deleted_at.is_(None),
+    )) or 0
     entries = [
         _movement_row(item)
         for item in db.scalars(
             select(Movement).where(
                 Movement.cassa_id == cassa.id,
                 Movement.deleted_at.is_(None),
+                Movement.annual_dues_person_key.is_(None),
             )
         ).all()
     ]
@@ -388,7 +394,8 @@ def build_annual_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
     sheet["H1"] = f"Branca {cassa.unit}"
     sheet["C2"] = f"{cassa.year - 1}-{cassa.year}"
     sheet["D2"] = "Quote pagate"
-    sheet["D3"] = "Numero paganti"
+    sheet["D3"] = "Ragazzi registrati"
+    sheet["E2"] = paid_count
     sheet["E3"] = settings.participants if settings else None
     sheet["L1"] = "Quota a ragazzo"
     sheet["N1"] = float(settings.quota_per_person) if settings else None
@@ -401,7 +408,7 @@ def build_annual_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
         _apply_border(sheet[coordinate])
 
     _merge_label(sheet, "L2:M2", "Spesa Massima")
-    sheet["N2"] = '=IF(OR(E2="",N1=""),"",E2*N1)'
+    sheet["N2"] = '=IF(OR(E3="",N1=""),"",E3*N1)'
     _merge_label(sheet, "O2:P2", "Spesa Eseguita")
     last_row = max(8, 7 + len(entries))
     sheet["Q2"] = f"=-SUM(R8:R{last_row})"
@@ -426,8 +433,8 @@ def build_annual_excel_report(db: DbSession, cassa: Cassa) -> Workbook:
     headers = {
         "A6": "N.°", "B6": "Data reg.ne", "C5": "Data oper.ne",
         "D6": "Fornitore", "E4": "Unità", "F4": "Bilancio",
-        "G4": "Operazione", "I6": "Note", "L4": "Cassa Contanti Branca",
-        "O4": "Cassa Banca Branca", "L6": "Entrate", "M6": "Uscite",
+        "G4": "Operazione", "I6": "Note", "L4": "Cassa Contanti (escl. quote)",
+        "O4": "Cassa Banca (escl. quote)", "L6": "Entrate", "M6": "Uscite",
         "N6": "Saldo", "O6": "Entrate", "P6": "Uscite",
         "Q6": "Saldo", "R7": f"Parziale {cassa.unit.replace('/', '')}",
     }

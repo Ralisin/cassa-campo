@@ -12,6 +12,7 @@ const saving = ref(false)
 const loading = ref(true)
 const error = ref('')
 const success = ref(false)
+const confirmAnnualBalances = ref(false)
 const euro = new Intl.NumberFormat('it-IT', { style: 'currency', currency: 'EUR' })
 
 const CATEGORY_LABELS = { vitto: 'Vitto', alloggio: 'Alloggio', trasporti: 'Trasporti', varie: 'Varie' }
@@ -21,6 +22,8 @@ const settings = reactive({
   participants: 0,
   quota_per_person: 0,
   cash_initial: 0,
+  bank_initial: 0,
+  annual_balances_confirmed: false,
   category_budgets: { vitto: 0, alloggio: 0, trasporti: 0, varie: 0 },
 })
 const annualStartYear = ref(settings.camp_year - 1)
@@ -51,9 +54,14 @@ async function save() {
     error.value = 'Inserisci due anni consecutivi, per esempio 2026 e 2027.'
     return
   }
+  if (isAnnual.value && !settings.annual_balances_confirmed && !confirmAnnualBalances.value) {
+    error.value = 'Verifica i saldi iniziali e confermali prima di salvare.'
+    return
+  }
   saving.value = true
   try {
-    await api.put('/settings', settings)
+    Object.assign(settings, await api.put('/settings', { ...settings, confirm_annual_balances: confirmAnnualBalances.value }))
+    confirmAnnualBalances.value = false
     success.value = true
     window.setTimeout(() => (success.value = false), 2500)
   } catch (cause) {
@@ -119,10 +127,10 @@ onMounted(load)
 
         <section class="dk-card">
           <h3 class="dk-card__title mb-4"><i class="pi pi-wallet dk-card__title-icon" /> Partecipanti e saldi iniziali</h3>
-          <p class="dk-card__subtitle mb-3">La disponibilità su carta viene calcolata automaticamente.</p>
+          <p class="dk-card__subtitle mb-3">{{ isAnnual ? 'Inserisci i saldi realmente presenti all’apertura; il budget previsto resta separato dagli incassi.' : 'La disponibilità su carta viene calcolata automaticamente.' }}</p>
           <div class="dk-field-row">
             <div class="dk-field">
-              <label for="participants">Numero paganti</label>
+              <label for="participants">{{ isAnnual ? 'Ragazzi registrati' : 'Numero paganti' }}</label>
               <PInputNumber id="participants" v-model="settings.participants" :min="0" :use-grouping="false" fluid />
             </div>
             <div class="dk-field">
@@ -132,8 +140,16 @@ onMounted(load)
           </div>
           <div class="dk-field">
             <label for="cash-initial">Contanti iniziali</label>
-            <PInputNumber id="cash-initial" v-model="settings.cash_initial" mode="currency" currency="EUR" locale="it-IT" :min="0" :max="calculatedBudget" fluid />
+            <PInputNumber id="cash-initial" v-model="settings.cash_initial" mode="currency" currency="EUR" locale="it-IT" :min="0" :max="isAnnual ? undefined : calculatedBudget" fluid />
           </div>
+          <div v-if="isAnnual" class="dk-field">
+            <label for="bank-initial">Banca iniziale</label>
+            <PInputNumber id="bank-initial" v-model="settings.bank_initial" mode="currency" currency="EUR" locale="it-IT" :min="0" fluid />
+          </div>
+          <label v-if="isAnnual && !settings.annual_balances_confirmed" class="flex items-start gap-2 text-sm text-slate-700">
+            <input v-model="confirmAnnualBalances" type="checkbox" class="mt-1 accent-emerald-700">
+            Ho verificato che i saldi iniziali contengano solo denaro già disponibile. Le quote che registro da ora saranno nuove entrate.
+          </label>
         </section>
 
         <section v-if="!isAnnual" class="dk-card">
@@ -150,10 +166,10 @@ onMounted(load)
       <div class="dk-card" style="position: sticky; top: 84px">
         <h3 class="dk-card__title mb-4"><i class="pi pi-calculator dk-card__title-icon" /> Riepilogo calcolato</h3>
         <div class="dk-define">
-          <div class="dk-define__row"><i class="pi pi-users" /><span class="dk-define__label">Paganti</span><span class="dk-define__value">{{ settings.participants }}</span></div>
+          <div class="dk-define__row"><i class="pi pi-users" /><span class="dk-define__label">{{ isAnnual ? 'Ragazzi registrati' : 'Paganti' }}</span><span class="dk-define__value">{{ settings.participants }}</span></div>
           <div class="dk-define__row"><i class="pi pi-briefcase" /><span class="dk-define__label">Spesa massima</span><span class="dk-define__value">{{ euro.format(calculatedBudget) }}</span></div>
           <div class="dk-define__row"><i class="pi pi-wallet" /><span class="dk-define__label">Contanti iniziali</span><span class="dk-define__value">{{ euro.format(Number(settings.cash_initial)) }}</span></div>
-          <div class="dk-define__row"><i class="pi pi-credit-card" /><span class="dk-define__label">Carta iniziale</span><span class="dk-define__value">{{ euro.format(calculatedBankInitial) }}</span></div>
+          <div class="dk-define__row"><i class="pi pi-credit-card" /><span class="dk-define__label">{{ isAnnual ? 'Banca iniziale' : 'Carta iniziale' }}</span><span class="dk-define__value">{{ euro.format(isAnnual ? Number(settings.bank_initial) : calculatedBankInitial) }}</span></div>
         </div>
         <PButton label="Salva impostazioni" icon="pi pi-check" class="dk-topbar__cta mt-5" :loading="saving" fluid @click="save" />
       </div>

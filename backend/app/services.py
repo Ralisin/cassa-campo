@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm import selectinload
 
 from app.models import (
+    BalanceType,
     Branch,
     CampCategoryBudget,
     CampSettings,
@@ -103,6 +104,7 @@ def movement_to_read(movement: Movement) -> MovementRead:
         category=movement.category,
         amount=movement.amount,
         notes=movement.notes,
+        annual_dues_person=movement.annual_dues_person,
         created_by=movement.created_by,
         creator_name=movement.creator.name,
         creator_email=movement.creator.email,
@@ -132,12 +134,20 @@ def apply_movement_input(
     for field, value in data.model_dump(exclude={"needs_reimbursement", "unit", "performed_by_id"}).items():
         setattr(movement, field, value)
     movement.cassa_id = cassa.id
+    movement.annual_dues_person_key = (
+        " ".join(data.annual_dues_person.casefold().split()) if data.annual_dues_person else None
+    )
     if cassa.kind == CassaKind.ANNO and role in (UserRole.ADMIN, UserRole.CASHIER) and data.unit:
         movement.unit = data.unit.value
     elif cassa.kind == CassaKind.CAMPO:
         movement.unit = Branch.GRUPPO.value if data.unit == Branch.GRUPPO else cassa.unit
     elif movement.id is None:
         movement.unit = cassa.unit
+    if data.annual_dues_person:
+        movement.unit = cassa.unit
+        movement.balance_type = BalanceType.ORDINARY
+        movement.supplier = f"Quota anno · {data.annual_dues_person}"
+        movement.notes = f"Pagamento quota anno per {data.annual_dues_person}"
     if data.needs_reimbursement and movement.reimbursement is None:
         movement.reimbursement = MovementReimbursement()
     elif not data.needs_reimbursement and movement.reimbursement is not None:
@@ -175,7 +185,10 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
         Decimal(settings.participants) * settings.quota_per_person if settings else ZERO
     )
     cash_initial = settings.cash_initial if settings else ZERO
-    bank_initial = max_budget - cash_initial
+    bank_initial = (
+        settings.bank_initial if cassa.kind == CassaKind.ANNO
+        else max_budget - cash_initial
+    ) if settings else ZERO
     withdrawals = Decimal(
         db.scalar(
             select(func.coalesce(func.sum(TreasuryTransfer.amount), 0)).where(
@@ -204,7 +217,9 @@ def get_dashboard(db: Session, cassa_id) -> DashboardRead:
     bank_balance = (
         bank_initial
         + total(MovementType.INCOME, PaymentMethod.CARD)
+        + total(MovementType.INCOME, PaymentMethod.BANK)
         - total(MovementType.EXPENSE, PaymentMethod.CARD)
+        - total(MovementType.EXPENSE, PaymentMethod.BANK)
         - withdrawals
         + deposits
     )

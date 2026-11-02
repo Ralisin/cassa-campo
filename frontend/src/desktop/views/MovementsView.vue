@@ -33,6 +33,7 @@ const methodOptions = [
   { label: 'Tutti i metodi', value: 'tutti' },
   { label: 'Contanti', value: 'contanti' },
   { label: 'Carta', value: 'carta' },
+  { label: 'Bonifico', value: 'bonifico' },
 ]
 const reimbursementOptions = [
   { label: 'Tutti i rimborsi', value: 'tutti' },

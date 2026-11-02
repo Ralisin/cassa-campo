@@ -39,6 +39,8 @@ function errorMessage(detail) {
         first_name: 'Nome',
         last_name: 'Cognome',
         cash_initial: 'Contanti iniziali',
+        bank_initial: 'Banca iniziale',
+        annual_dues_person: 'Ragazzo/a',
       }
       return `${labels[field] ?? field ?? 'Dato'}: ${item.msg}`
     }).join('. ')

@@ -32,6 +32,7 @@ const navItems = computed(() => {
     ...(session.isSystemAdmin ? [{ label: 'Sistema', icon: 'pi pi-shield', to: '/system', key: 'system' }] : []),
     { label: 'Dashboard', icon: 'pi pi-th-large', to: '/', key: 'home' },
     { label: 'Movimenti', icon: 'pi pi-list', to: '/movimenti', key: 'movements' },
+    ...(session.activeCassa?.kind === 'anno' ? [{ label: 'Quote anno', icon: 'pi pi-users', to: '/quote-anno', key: 'annual-dues' }] : []),
     { label: 'Rimborsi', icon: 'pi pi-replay', to: '/rimborsi', key: 'reimbursements', badge: true },
     { label: 'Riepilogo', icon: 'pi pi-chart-pie', to: '/riepilogo', key: 'summary' },
     ...(session.isOperator ? [{ label: 'Impostazioni', icon: 'pi pi-sliders-h', to: '/impostazioni', key: 'settings' }] : []),

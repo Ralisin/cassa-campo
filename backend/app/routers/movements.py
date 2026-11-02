@@ -8,6 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.exc import IntegrityError
 
 from app.audit_service import write_audit
 from app.dependencies import (
@@ -18,6 +19,8 @@ from app.dependencies import (
 )
 from app.models import (
     Cassa,
+    CassaKind,
+    CampSettings,
     Membership,
     Movement,
     MovementReimbursement,
@@ -35,10 +38,46 @@ from app.schemas import (
     MovementRestoreResult,
 )
 from app.services import apply_movement_input, movement_to_read
+from app.routers.settings import latest_settings
 
 router = APIRouter(prefix="/movements", tags=["movements"])
 
 PAGE_SIZE = 50
+
+
+def validate_annual_dues(db: DbSession, cassa: Cassa, data: MovementInput,
+                         movement_id: uuid.UUID | None = None) -> None:
+    if not data.annual_dues_person:
+        if data.payment_method == PaymentMethod.BANK:
+            raise HTTPException(status_code=422, detail="Il bonifico è riservato alle quote anno")
+        return
+    if cassa.kind != CassaKind.ANNO:
+        raise HTTPException(status_code=422, detail="Le quote anno si registrano solo nella cassa annuale")
+    settings = db.scalar(select(CampSettings).where(CampSettings.cassa_id == cassa.id)
+                         .order_by(CampSettings.created_at.desc()).limit(1).with_for_update())
+    if not settings or settings.quota_per_person <= 0:
+        raise HTTPException(status_code=422, detail="Imposta prima la quota per ragazzo")
+    if not settings.annual_balances_confirmed:
+        raise HTTPException(status_code=422, detail="Conferma prima i saldi iniziali nelle impostazioni")
+    if data.amount != settings.quota_per_person:
+        raise HTTPException(status_code=422, detail="L'importo deve corrispondere alla quota anno")
+    key = " ".join(data.annual_dues_person.casefold().split())
+    duplicate = db.scalar(select(Movement.id).where(
+        Movement.cassa_id == cassa.id,
+        Movement.annual_dues_person_key == key,
+        Movement.deleted_at.is_(None),
+        Movement.id != movement_id,
+    ))
+    if duplicate:
+        raise HTTPException(status_code=409, detail="La quota di questo ragazzo risulta già pagata")
+    paid = db.scalar(select(func.count(Movement.id)).where(
+        Movement.cassa_id == cassa.id,
+        Movement.annual_dues_person_key.is_not(None),
+        Movement.deleted_at.is_(None),
+        Movement.id != movement_id,
+    )) or 0
+    if paid >= settings.participants:
+        raise HTTPException(status_code=422, detail="Le quote pagate raggiungono già il numero di ragazzi registrati")
 
 
 def encode_cursor(movement: Movement) -> str:
@@ -123,6 +162,7 @@ def list_movements(
         filters.append(
             or_(
                 Movement.supplier.ilike(pattern),
+                Movement.annual_dues_person.ilike(pattern),
                 Movement.notes.ilike(pattern),
                 User.name.ilike(pattern),
                 User.email.ilike(pattern),
@@ -217,6 +257,30 @@ def list_deleted_movements(db: DbSession, membership: WritableMembership) -> lis
     return [movement_to_read(item) for item in movements]
 
 
+@router.get("/annual-dues")
+def list_annual_dues(db: DbSession, cassa: CurrentCassa) -> dict:
+    if cassa.kind != CassaKind.ANNO:
+        raise HTTPException(status_code=404, detail="Disponibile solo per la cassa annuale")
+    settings = latest_settings(db, cassa.id)
+    payments = db.scalars(select(Movement).where(
+        Movement.cassa_id == cassa.id,
+        Movement.annual_dues_person_key.is_not(None),
+        Movement.deleted_at.is_(None),
+    ).order_by(Movement.annual_dues_person, Movement.operation_date)).all()
+    return {
+        "paid": len(payments),
+        "registered": settings.participants if settings else 0,
+        "quota_per_person": settings.quota_per_person if settings else 0,
+        "payments": [{
+            "movement_id": item.id,
+            "person": item.annual_dues_person,
+            "operation_date": item.operation_date,
+            "amount": item.amount,
+            "payment_method": item.payment_method,
+        } for item in payments],
+    }
+
+
 @router.get("/{movement_id}", response_model=MovementRead)
 def get_movement(movement_id: uuid.UUID, db: DbSession, cassa: CurrentCassa) -> MovementRead:
     return movement_to_read(get_movement_or_404(db, movement_id, cassa.id))
@@ -225,11 +289,18 @@ def get_movement(movement_id: uuid.UUID, db: DbSession, cassa: CurrentCassa) -> 
 @router.post("", response_model=MovementRead, status_code=status.HTTP_201_CREATED)
 def create_movement(data: MovementInput, db: DbSession, membership: WritableMembership) -> MovementRead:
     cassa = membership.cassa
+    validate_annual_dues(db, cassa, data)
     movement = Movement(created_by=membership.user_id)
     apply_movement_input(movement, data, cassa, membership.role)
     set_performer(db, movement, data.performed_by_id, membership)
     db.add(movement)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        if not data.annual_dues_person:
+            raise
+        raise HTTPException(status_code=409, detail="La quota di questo ragazzo risulta già pagata") from exc
     notify_admins_of_movement(
         db,
         movement,
@@ -259,8 +330,16 @@ def update_movement(
     movement = get_movement_or_404(db, movement_id, cassa.id)
     if not can_edit_movement(membership, movement.created_by):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    validate_annual_dues(db, cassa, data, movement_id)
     reimbursement_requested = movement.reimbursement is None and data.needs_reimbursement
     apply_movement_input(movement, data, cassa, membership.role)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        if not data.annual_dues_person:
+            raise
+        raise HTTPException(status_code=409, detail="La quota di questo ragazzo risulta già pagata") from exc
     set_performer(db, movement, data.performed_by_id, membership)
     if reimbursement_requested:
         notify_admins_of_movement(db, movement, membership.user, reimbursement_requested=True)
@@ -316,8 +395,31 @@ def restore_movement(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Movement not found")
     if not can_edit_movement(membership, movement.created_by):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    if movement.annual_dues_person_key:
+        duplicate = db.scalar(select(Movement.id).where(
+            Movement.cassa_id == membership.cassa_id,
+            Movement.annual_dues_person_key == movement.annual_dues_person_key,
+            Movement.deleted_at.is_(None),
+            Movement.id != movement.id,
+        ))
+        if duplicate:
+            raise HTTPException(status_code=409, detail="Esiste già una quota attiva per questo ragazzo")
+        settings = db.scalar(select(CampSettings).where(CampSettings.cassa_id == membership.cassa_id)
+                             .order_by(CampSettings.created_at.desc()).limit(1).with_for_update())
+        paid = db.scalar(select(func.count(Movement.id)).where(
+            Movement.cassa_id == membership.cassa_id,
+            Movement.annual_dues_person_key.is_not(None),
+            Movement.deleted_at.is_(None),
+        )) or 0
+        if settings and paid >= settings.participants:
+            raise HTTPException(status_code=422, detail="Non ci sono posti disponibili tra i ragazzi registrati")
     movement.deleted_at = None
     movement.deleted_by = None
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Esiste già una quota attiva per questo ragazzo") from exc
     write_audit(
         db,
         action="movement_restored",
